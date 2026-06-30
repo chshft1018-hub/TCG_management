@@ -39,19 +39,6 @@ if analyze_btn:
         st.subheader("鑑定卡 (PSA10)")
         st.metric("最新價", f"NT$ {m_PSA['latest']:,.0f}")
         st.metric("ROI", f"{m_PSA['roi']:.2f}%", delta_color="normal")
-    # 畫圖
-    chart_A = create_chart(data_A, "裸卡(A品) 價格趨勢")
-    chart_PSA = create_chart(data_PSA, "鑑定卡(PSA10) 價格趨勢")
-    
-    # 在網頁上顯示圖表
-    st.plotly_chart(chart_A, use_container_width=True)
-    st.plotly_chart(chart_PSA, use_container_width=True)
-    # 顯示原始數據細節
-    st.write("---")
-    st.write("詳細統計數據：", pd.DataFrame([m_A, m_PSA], index=["A品", "PSA10"]))
-
-    # 3. 修復表格：將所有統計指標一併放入
-    df_metrics = pd.DataFrame([m_A, m_PSA], index=["A品", "PSA10"])
     
     # 選擇你要顯示的完整欄位
     df_display = df_metrics.rename(columns={
