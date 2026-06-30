@@ -43,3 +43,14 @@ if analyze_btn:
     # 顯示原始數據細節
     st.write("---")
     st.write("詳細統計數據：", pd.DataFrame([m_A, m_PSA], index=["A品", "PSA10"]))
+    # 在 app.py 中，放在顯示 Dashbord 的區域下方
+if analyze_btn:
+    # ... (前面的邏輯不變) ...
+    
+    # 畫圖
+    chart_A = create_chart(data_A, "裸卡(A品) 價格趨勢")
+    chart_PSA = create_chart(data_PSA, "鑑定卡(PSA10) 價格趨勢")
+    
+    # 在網頁上顯示圖表
+    st.plotly_chart(chart_A, use_container_width=True)
+    st.plotly_chart(chart_PSA, use_container_width=True)
