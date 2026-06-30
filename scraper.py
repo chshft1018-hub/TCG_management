@@ -33,8 +33,14 @@ def create_chart(json_data, title, rate=0.20):
     if not json_data or 'points' not in json_data: return None
     df = pd.DataFrame(json_data['points'], columns=['timestamp', 'price_jpy'])
     df['date'] = pd.to_datetime(df['timestamp'], unit='ms')
-    df['price_twd'] = df['price_jpy'] * rate # 轉換為台幣
+    df['price_twd'] = df['price_jpy'] * rate
     
-    fig = px.line(df, x='date', y='price_twd', title=title) # y軸改用台幣
-    fig.update_layout(template="plotly_dark", yaxis_title="價格 (NT$)")
+    fig = px.line(df, x='date', y='price_twd', title=title)
+    
+    # 關鍵：強制 Y 軸顯示完整數值格式 (d 代表整數)
+    fig.update_layout(
+        template="plotly_dark", 
+        yaxis_title="價格 (NT$)",
+        yaxis=dict(tickformat=",d") 
+    )
     return fig
