@@ -69,5 +69,5 @@ if analyze_btn:
     chart_A = create_chart(data_A, "裸卡(A品) 價格趨勢")
     chart_PSA = create_chart(data_PSA, "鑑定卡(PSA10) 價格趨勢")
     
-    st.plotly_chart(chart_A, use_container_width=True)
-    st.plotly_chart(chart_PSA, use_container_width=True)
+    st.plotly_chart(chart_A, use_container_width=True, key="chart_A")
+    st.plotly_chart(chart_PSA, use_container_width=True, key="chart_PSA")
