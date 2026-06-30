@@ -1,0 +1,6 @@
+pandas
+aiohttp
+ipywidgets
+gspread
+google-auth
+nest_asyncio
