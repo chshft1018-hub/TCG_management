@@ -26,17 +26,15 @@ def analyze_data(json_data, cost_twd, rate=0.20):
         "avg_1w": avg_1w,
         "roi": ((latest - cost_twd) / cost_twd * 100)
     }
-    # 在 scraper.py 中加入
+# 請確保 scraper.py 裡有這段匯入
 import plotly.express as px
 
+# 確保這個函式存在於 scraper.py
 def create_chart(json_data, title):
     if not json_data or 'points' not in json_data:
         return None
-    
     df = pd.DataFrame(json_data['points'], columns=['timestamp', 'price_jpy'])
     df['date'] = pd.to_datetime(df['timestamp'], unit='ms')
-    
-    # 畫圖
     fig = px.line(df, x='date', y='price_jpy', title=title)
-    fig.update_layout(template="plotly_dark") # 配合你的深色介面
+    fig.update_layout(template="plotly_dark")
     return fig
