@@ -1,0 +1,6 @@
+streamlit
+pandas
+aiohttp
+gspread
+google-auth
+nest_asyncio
