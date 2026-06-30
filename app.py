@@ -54,9 +54,16 @@ if analyze_btn:
     df_metrics = pd.DataFrame([m_A, m_PSA], index=["A品", "PSA10"])
     
     # 選擇你要顯示的完整欄位
-    display_cols = ['latest', 'avg_1w', 'avg_1m', 'avg_3m', 'roi']
+    df_display = df_metrics.rename(columns={
+    'latest': '最新價', 
+    'avg_1w': '週均價', 
+    'avg_1m': '月均價', 
+    'avg_3m': '季均價', 
+    'roi': 'ROI (%)'
+    })
+    
     st.write("詳細統計數據：")
-    st.dataframe(df_metrics[display_cols].style.format("{:,.0f}")) # 讓數字更好閱讀
+    st.dataframe(df_display.style.format("{:,.0f}"))
 
     # 4. 修復 NameError：呼叫繪圖 (確保已匯入 create_chart)
     chart_A = create_chart(data_A, "裸卡(A品) 價格趨勢")
