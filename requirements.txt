@@ -4,3 +4,4 @@ aiohttp
 gspread
 google-auth
 nest_asyncio
+plotly
