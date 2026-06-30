@@ -1,7 +1,7 @@
 import streamlit as st
 import asyncio
 import pandas as pd
-from scraper import get_chart_data, analyze_data  # 直接匯入你整理好的模組
+from scraper import get_chart_data, analyze_data, create_chart# 直接匯入你整理好的模組
 
 # 網頁設定
 st.set_page_config(page_title="卡牌投資管理", layout="wide")
@@ -39,18 +39,28 @@ if analyze_btn:
         st.subheader("鑑定卡 (PSA10)")
         st.metric("最新價", f"NT$ {m_PSA['latest']:,.0f}")
         st.metric("ROI", f"{m_PSA['roi']:.2f}%", delta_color="normal")
-
-    # 顯示原始數據細節
-    st.write("---")
-    st.write("詳細統計數據：", pd.DataFrame([m_A, m_PSA], index=["A品", "PSA10"]))
-    # 在 app.py 中，放在顯示 Dashbord 的區域下方
-if analyze_btn:
-    # ... (前面的邏輯不變) ...
-    
     # 畫圖
     chart_A = create_chart(data_A, "裸卡(A品) 價格趨勢")
     chart_PSA = create_chart(data_PSA, "鑑定卡(PSA10) 價格趨勢")
     
     # 在網頁上顯示圖表
+    st.plotly_chart(chart_A, use_container_width=True)
+    st.plotly_chart(chart_PSA, use_container_width=True)
+    # 顯示原始數據細節
+    st.write("---")
+    st.write("詳細統計數據：", pd.DataFrame([m_A, m_PSA], index=["A品", "PSA10"]))
+
+    # 3. 修復表格：將所有統計指標一併放入
+    df_metrics = pd.DataFrame([m_A, m_PSA], index=["A品", "PSA10"])
+    
+    # 選擇你要顯示的完整欄位
+    display_cols = ['latest', 'avg_1w', 'avg_1m', 'avg_3m', 'roi']
+    st.write("詳細統計數據：")
+    st.dataframe(df_metrics[display_cols].style.format("{:,.0f}")) # 讓數字更好閱讀
+
+    # 4. 修復 NameError：呼叫繪圖 (確保已匯入 create_chart)
+    chart_A = create_chart(data_A, "裸卡(A品) 價格趨勢")
+    chart_PSA = create_chart(data_PSA, "鑑定卡(PSA10) 價格趨勢")
+    
     st.plotly_chart(chart_A, use_container_width=True)
     st.plotly_chart(chart_PSA, use_container_width=True)
