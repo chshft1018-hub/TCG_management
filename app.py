@@ -12,7 +12,7 @@ if 'card_library' not in st.session_state:
 # 導航選單 (側邊欄)
 with st.sidebar:
     st.header("導航")
-    page = st.radio("選擇頁面", ["卡牌分析", "卡牌庫"])
+    page = st.radio("主頁", ["卡牌分析", "卡牌庫"])
     st.markdown("---")
     st.header("參數設定")
     product_id = st.text_input("商品 ID", value="826553")
@@ -22,7 +22,7 @@ with st.sidebar:
 # --- 頁面邏輯 ---
 
 if page == "卡牌分析":
-    st.title("📊 卡牌分析頁面")
+    st.title("📊 卡排查價")
     
     if analyze_btn:
         with st.spinner('正在獲取數據...'):
@@ -71,4 +71,4 @@ elif page == "卡牌庫":
     if st.session_state['card_library']:
         st.dataframe(pd.DataFrame(st.session_state['card_library']), use_container_width=True)
     else:
-        st.info("庫房目前沒有資料。")
+        st.info("牌庫目前沒有資料。")
