@@ -40,20 +40,29 @@ if analyze_btn:
         df_display = df_metrics[cols].rename(columns={
             'latest': '最新價', 'avg_1w': '週均價', 'avg_1m': '月均價', 'avg_3m': '季均價', 'roi': 'ROI (%)'
         })
-    # 3. 統一渲染區塊 (在 spinner 結束後一次呈現)
-        col1, col2 = st.columns(2)
+# 3. 呈現 Dashboard
+    col1, col2 = st.columns(2)
+
     with col1:
         st.subheader("裸卡 (A品)")
         st.metric("最新價", f"NT$ {m_A['latest']:,.0f}")
         st.metric("ROI", f"{m_A['roi']:.2f}%")
+
     with col2:
         st.subheader("鑑定卡 (PSA10)")
         st.metric("最新價", f"NT$ {m_PSA['latest']:,.0f}")
         st.metric("ROI", f"{m_PSA['roi']:.2f}%")
 
+    # 4. 顯示表格與圖表
     st.write("詳細統計數據：")
+    df_metrics = pd.DataFrame([m_A, m_PSA], index=["A品", "PSA10"])
+    df_display = df_metrics.rename(columns={
+        'latest': '最新價', 'avg_1w': '週均價', 'avg_1m': '月均價', 'avg_3m': '季均價', 'roi': 'ROI (%)'
+    })
     st.dataframe(df_display.style.format("{:,.0f}"))
 
-    # 顯示圖表
+    chart_A = create_chart(data_A, "裸卡(A品) 價格趨勢")
+    chart_PSA = create_chart(data_PSA, "鑑定卡(PSA10) 價格趨勢")
+
     if chart_A: st.plotly_chart(chart_A, use_container_width=True, key="chart_A")
     if chart_PSA: st.plotly_chart(chart_PSA, use_container_width=True, key="chart_PSA")
