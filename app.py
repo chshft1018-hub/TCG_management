@@ -37,14 +37,15 @@ if analyze_btn:
         st.metric("ROI", f"{m_PSA['roi']:.2f}%")
 
     st.write("詳細統計數據：")
-    # 1.建立顯示用的 DataFrame
+    # 1. 準備資料
     df_metrics = pd.DataFrame([m_A, m_PSA])
     df_metrics['品項'] = ["A品", "PSA10"]
     
-    # 2. 將「名稱」設為 Index，這樣它在視覺上會獨立出來，不會每行重複顯示
+    # 2. 將「名稱」與「品項」同時設為 MultiIndex (多重索引)
+    # 這會告訴 Streamlit：名稱是第一層分類，品項是第二層
     df_metrics.set_index(['名稱', '品項'], inplace=True)
     
-    # 3. 重新命名剩下的數值欄位
+    # 3. 重新命名數值欄位
     df_display = df_metrics.rename(columns={
         'latest': '最新價', 
         'avg_1w': '週均價', 
