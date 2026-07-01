@@ -37,22 +37,34 @@ if analyze_btn:
         st.metric("ROI", f"{m_PSA['roi']:.2f}%")
 
     st.write("詳細統計數據：")
-    # 1. 將 m_A 和 m_PSA 合併成一個寬表格
-    # 這裡將品項作為欄位名稱，數值作為內容
+    # 1. 轉置資料並設定品項為欄位
     df_metrics = pd.DataFrame([m_A, m_PSA], index=["A品", "PSA10"]).T
     
-    # 2. 加入名稱欄位作為單一標籤
-    # 因為 m_A 和 m_PSA 都有名稱，我們取其中一個即可
-    card_name = m_A.get('名稱', '未知卡牌')
+    # 2. 移除名稱欄位 (因為已經作為標題顯示)
+    # 並過濾出我們需要的數值指標
+    df_display = df_metrics.drop(index='名稱')
     
-    # 3. 調整顯示格式
-    # 轉置後，欄位現在是 "A品" 和 "PSA10"
-    df_display = df_metrics.rename(columns={
-        'latest': '最新價', 'avg_1w': '週均價', 'avg_1m': '月均價', 'avg_3m': '季均價', 'roi': 'ROI (%)'
+    # 3. 重新命名欄位為中文，使其更易讀
+    df_display = df_display.rename(columns={
+        'latest': '最新價', 
+        'avg_1w': '週均價', 
+        'avg_1m': '月均價', 
+        'avg_3m': '季均價', 
+        'roi': 'ROI (%)'
     })
     
-    # 移除原來的索引名稱，讓畫面更簡潔
-    st.write(f"### 卡牌：{card_name}")
-    st.dataframe(df_display, use_container_width=True)
+    # 4. 使用 st.dataframe 進行格式化呈現
+    # 將數值轉換為整數/百分比格式
+    st.dataframe(
+        df_display.style.format({
+            '最新價': '{:,.0f}',
+            '週均價': '{:,.0f}',
+            '月均價': '{:,.0f}',
+            '季均價': '{:,.0f}',
+            'ROI (%)': '{:.2f}%'
+        }), 
+        use_container_width=True
+    )
+    
     if chart_A: st.plotly_chart(chart_A, use_container_width=True, key="chart_A")
     if chart_PSA: st.plotly_chart(chart_PSA, use_container_width=True, key="chart_PSA")
