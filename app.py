@@ -29,6 +29,7 @@ if analyze_btn:
         chart_PSA = create_chart(data_PSA, "鑑定卡(PSA10) 價格趨勢")
 
     # 1. 顯示名稱標題
+    card_name = loop.run_until_complete(get_product_name(product_id))
     st.subheader(f"卡牌名稱：{card_name}")
 
     # 2. 顯示 Metric 卡片
