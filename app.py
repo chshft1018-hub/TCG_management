@@ -5,14 +5,13 @@ from scraper import get_chart_data, analyze_data, create_chart, get_product_name
 
 st.set_page_config(page_title="卡牌投資管理", layout="wide")
 
-#初始化
+# --- 初始化 Session State ---
 if 'card_library' not in st.session_state:
     st.session_state['card_library'] = []
-
 if 'last_analysis' not in st.session_state:
     st.session_state['last_analysis'] = None
 
-# 導航選單 (側邊欄)
+# --- 導航選單 ---
 with st.sidebar:
     st.header("功能")
     page = st.radio("請選擇功能", ["卡牌分析", "卡牌庫"])
@@ -27,6 +26,7 @@ with st.sidebar:
 if page == "卡牌分析":
     st.title("📊 卡牌查價")
     
+    # 執行分析邏輯
     if analyze_btn:
         with st.spinner('正在獲取數據...'):
             loop = asyncio.new_event_loop()
@@ -39,31 +39,24 @@ if page == "卡牌分析":
             m_A = analyze_data(data_A, cost, 0.20)
             m_PSA = analyze_data(data_PSA, cost, 0.20)
             
-            # 存入 Session 以便後續加入庫房
             st.session_state['last_analysis'] = {
                 "name": card_name, "cost": cost, "m_A": m_A, "m_PSA": m_PSA,
                 "chart_A": create_chart(data_A, "裸卡(A品) 價格趨勢"),
                 "chart_PSA": create_chart(data_PSA, "鑑定卡(PSA10) 價格趨勢")
             }
 
-        # 顯示分析結果
-        res = st.session_state['last_analysis']
+    # --- 顯示結果 (與 analyze_btn 脫鉤，確保切換頁面後圖表依然存在) ---
+    res = st.session_state['last_analysis']
+    if res:
         st.subheader(f"卡牌名稱：{res['name']}")
         
-        # 存入庫房按鈕
         if st.button("💾 存入卡牌庫"):
-            # 確保資料結構完整，直接從 res 中提取數據
-            new_data = {
-                "名稱": res['name'],
-                "成本": res['cost'],
-                "A品最新": res['m_A']['latest'],
-                "PSA10最新": res['m_PSA']['latest']
-            }
-            # 使用列表擴展方式，確保不會覆蓋原有庫存
-            st.session_state['card_library'].append(new_data)
-            st.success("已成功存入卡牌庫！")
+            st.session_state['card_library'].append({
+                "名稱": res['name'], "成本": res['cost'], 
+                "A品最新": res['m_A']['latest'], "PSA10最新": res['m_PSA']['latest']
+            })
+            st.success("已成功儲存！")
 
-        # 顯示指標與表格
         c1, c2 = st.columns(2)
         c1.metric("裸卡 (A品) 最新價", f"NT$ {res['m_A']['latest']:,.0f}")
         c2.metric("鑑定卡 (PSA10) 最新價", f"NT$ {res['m_PSA']['latest']:,.0f}")
@@ -72,20 +65,14 @@ if page == "卡牌分析":
             'latest': '最新價', 'avg_1w': '週均價', 'avg_1m': '月均價', 'avg_3m': '季均價', 'roi': 'ROI (%)'
         })
         st.dataframe(df_display.style.format('{:,.2f}'), use_container_width=True)
-       # 確保只有在分析過後才執行圖表繪製
-    if 'last_analysis' in st.session_state:
-        res = st.session_state['last_analysis']
-        
+
         st.write("---")
         chart_col1, chart_col2 = st.columns(2)
-        
         with chart_col1:
-            if res.get('chart_A'):
-                st.plotly_chart(res['chart_A'], use_container_width=True)
-                
+            st.plotly_chart(res['chart_A'], use_container_width=True)
         with chart_col2:
-            if res.get('chart_PSA'):
-                st.plotly_chart(res['chart_PSA'], use_container_width=True)
+            st.plotly_chart(res['chart_PSA'], use_container_width=True)
+
 elif page == "卡牌庫":
     st.title("📂 卡牌庫")
     if st.session_state['card_library']:
