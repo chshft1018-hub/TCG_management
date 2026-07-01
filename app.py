@@ -37,15 +37,14 @@ if analyze_btn:
         st.metric("ROI", f"{m_PSA['roi']:.2f}%")
 
     st.write("詳細統計數據：")
-    # 1. 轉置資料並設定品項為欄位
-    df_metrics = pd.DataFrame([m_A, m_PSA], index=["A品", "PSA10"]).T
+    # 1. 準備 DataFrame，此時欄位名稱仍為英文
+    df_metrics = pd.DataFrame([m_A, m_PSA], index=["A品", "PSA10"])
     
-    # 2. 移除名稱欄位 (因為已經作為標題顯示)
-    # 並過濾出我們需要的數值指標
-    df_display = df_metrics.drop(index='名稱')
+    # 2. 先進行轉置 (Transpose)，讓 A品/PSA10 變成欄位，原本的指標變成 Index
+    df_display = df_metrics.T
     
-    # 3. 重新命名欄位為中文，使其更易讀
-    df_display = df_display.rename(columns={
+    # 3. 重新命名 Index (將 latest, avg_1w 等英文改成中文)
+    df_display = df_display.rename(index={
         'latest': '最新價', 
         'avg_1w': '週均價', 
         'avg_1m': '月均價', 
@@ -53,18 +52,18 @@ if analyze_btn:
         'roi': 'ROI (%)'
     })
     
-    # 4. 使用 st.dataframe 進行格式化呈現
-    # 將數值轉換為整數/百分比格式
+    # 4. 移除不需要的名稱列 (因為名稱已經作為標題)
+    if '名稱' in df_display.index:
+        df_display = df_display.drop(index='名稱')
+    
+    # 5. 使用 style 進行格式化，確保小數點取到百分位 (四捨五入)
+    # 注意：這裡對所有數據列進行格式化
     st.dataframe(
         df_display.style.format({
-            '最新價': '{:,.0f}',
-            '週均價': '{:,.0f}',
-            '月均價': '{:,.0f}',
-            '季均價': '{:,.0f}',
-            'ROI (%)': '{:.2f}%'
+            'A品': '{:,.2f}',
+            'PSA10': '{:,.2f}'
         }), 
         use_container_width=True
-    )
     
     if chart_A: st.plotly_chart(chart_A, use_container_width=True, key="chart_A")
     if chart_PSA: st.plotly_chart(chart_PSA, use_container_width=True, key="chart_PSA")
