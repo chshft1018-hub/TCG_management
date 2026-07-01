@@ -3,6 +3,7 @@ import asyncio
 import aiohttp
 import pandas as pd
 import plotly.express as px
+async def get_product_name(product_id):
 
 async def get_chart_data(product_id, option_id):
     url = f"https://snkrdunk.com/v1/apparels/{product_id}/sales-chart/used?range=all&salesChartOptionId={option_id}"
