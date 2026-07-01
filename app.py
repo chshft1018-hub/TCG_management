@@ -58,13 +58,23 @@ if analyze_btn:
     
     # 5. 使用 style 進行格式化，確保小數點取到百分位 (四捨五入)
     # 注意：這裡對所有數據列進行格式化
-   st.dataframe(
+st.write("詳細統計數據：")
+
+    # 確保這一區塊的所有程式碼頂格對齊 (4個空格)
+    df_metrics = pd.DataFrame([m_A, m_PSA], index=["A品", "PSA10"]).T
+    df_display = df_metrics.drop(index='名稱')
+    df_display = df_display.rename(index={
+        'latest': '最新價', 
+        'avg_1w': '週均價', 
+        'avg_1m': '月均價', 
+        'avg_3m': '季均價', 
+        'roi': 'ROI (%)'
+    })
+
+    st.dataframe(
         df_display.style.format({
-            '最新價': '{:,.0f}',
-            '週均價': '{:,.0f}',
-            '月均價': '{:,.0f}',
-            '季均價': '{:,.0f}',
-            'ROI (%)': '{:.2f}%'
+            'A品': '{:,.2f}',
+            'PSA10': '{:,.2f}'
         }),
         use_container_width=True
     )
