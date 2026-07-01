@@ -58,12 +58,16 @@ if analyze_btn:
     
     # 5. 使用 style 進行格式化，確保小數點取到百分位 (四捨五入)
     # 注意：這裡對所有數據列進行格式化
-    st.dataframe(
+   st.dataframe(
         df_display.style.format({
-            'A品': '{:,.2f}',
-            'PSA10': '{:,.2f}'
-        }), 
+            '最新價': '{:,.0f}',
+            '週均價': '{:,.0f}',
+            '月均價': '{:,.0f}',
+            '季均價': '{:,.0f}',
+            'ROI (%)': '{:.2f}%'
+        }),
         use_container_width=True
+    )
     
     if chart_A: st.plotly_chart(chart_A, use_container_width=True, key="chart_A")
     if chart_PSA: st.plotly_chart(chart_PSA, use_container_width=True, key="chart_PSA")
