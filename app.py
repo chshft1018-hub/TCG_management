@@ -46,7 +46,7 @@ if page == "卡牌分析":
             }
 
     # --- 顯示結果 (與 analyze_btn 脫鉤，確保切換頁面後圖表依然存在) ---
-res = st.session_state['last_analysis']
+    res = st.session_state['last_analysis']
     if res:
         st.subheader(f"卡牌名稱：{res['name']}")
 
