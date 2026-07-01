@@ -37,25 +37,22 @@ if analyze_btn:
         st.metric("ROI", f"{m_PSA['roi']:.2f}%")
 
     st.write("詳細統計數據：")
-    # 1. 準備資料
-    df_metrics = pd.DataFrame([m_A, m_PSA])
-    df_metrics['品項'] = ["A品", "PSA10"]
+    # 1. 將 m_A 和 m_PSA 合併成一個寬表格
+    # 這裡將品項作為欄位名稱，數值作為內容
+    df_metrics = pd.DataFrame([m_A, m_PSA], index=["A品", "PSA10"]).T
     
-    # 2. 將「名稱」與「品項」同時設為 MultiIndex (多重索引)
-    # 這會告訴 Streamlit：名稱是第一層分類，品項是第二層
-    df_metrics.set_index(['名稱', '品項'], inplace=True)
+    # 2. 加入名稱欄位作為單一標籤
+    # 因為 m_A 和 m_PSA 都有名稱，我們取其中一個即可
+    card_name = m_A.get('名稱', '未知卡牌')
     
-    # 3. 重新命名數值欄位
+    # 3. 調整顯示格式
+    # 轉置後，欄位現在是 "A品" 和 "PSA10"
     df_display = df_metrics.rename(columns={
-        'latest': '最新價', 
-        'avg_1w': '週均價', 
-        'avg_1m': '月均價', 
-        'avg_3m': '季均價', 
-        'roi': 'ROI (%)'
+        'latest': '最新價', 'avg_1w': '週均價', 'avg_1m': '月均價', 'avg_3m': '季均價', 'roi': 'ROI (%)'
     })
     
-    # 4. 顯示表格
+    # 移除原來的索引名稱，讓畫面更簡潔
+    st.write(f"### 卡牌：{card_name}")
     st.dataframe(df_display, use_container_width=True)
-
     if chart_A: st.plotly_chart(chart_A, use_container_width=True, key="chart_A")
     if chart_PSA: st.plotly_chart(chart_PSA, use_container_width=True, key="chart_PSA")
