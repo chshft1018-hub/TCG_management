@@ -22,7 +22,7 @@ with st.sidebar:
 # --- 頁面邏輯 ---
 
 if page == "卡牌分析":
-    st.title("📊 卡排查價")
+    st.title("📊 卡牌查價")
     
     if analyze_btn:
         with st.spinner('正在獲取數據...'):
