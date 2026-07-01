@@ -46,15 +46,18 @@ if page == "卡牌分析":
             }
 
     # --- 顯示結果 (與 analyze_btn 脫鉤，確保切換頁面後圖表依然存在) ---
-    res = st.session_state['last_analysis']
+res = st.session_state['last_analysis']
     if res:
         st.subheader(f"卡牌名稱：{res['name']}")
-        
+
+        # 這裡確保縮排完全一致
         if st.button("💾 存入卡牌庫"):
-           psa10_roi = ((res['m_PSA']['latest'] - res['cost']) / res['cost']) * 100
+            psa10_roi = ((res['m_PSA']['latest'] - res['cost']) / res['cost']) * 100
             st.session_state['card_library'].append({
-                "名稱": res['name'], "成本": res['cost'], 
-                "A品最新": res['m_A']['latest'], "PSA10最新": res['m_PSA']['latest'],
+                "名稱": res['name'], 
+                "成本": res['cost'],
+                "A品最新": res['m_A']['latest'], 
+                "PSA10最新": res['m_PSA']['latest'],
                 "ROI (PSA10)": f"{psa10_roi:.2f}%"
             })
             st.success("已成功儲存！")
