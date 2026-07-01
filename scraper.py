@@ -4,7 +4,23 @@ import aiohttp
 import pandas as pd
 import plotly.express as px
 async def get_product_name(product_id):
-
+    url = f"https://snkrdunk.com/v1/apparels/{product_id}"
+    headers = {"User-Agent": "Mozilla/5.0"}
+    async with aiohttp.ClientSession() as session:
+        try:
+            async with session.get(url, headers=headers) as resp:
+                data = await resp.json()
+                
+                # 為了精確找出名稱，我們可以先印出看看 API 回傳結構
+                # 在正式部署前，這能幫我們確認正確的 key
+                # print(data) 
+                
+                # 根據一般 Snkrdunk API 結構，名稱通常位於 data 的 root 層級
+                # 如果該 API 有巢狀結構，我們需要調整這裡
+                name = data.get('name') or data.get('product_name') or '未知卡牌'
+                return name
+        except Exception as e:
+            return f"Error: {str(e)}"
 async def get_chart_data(product_id, option_id):
     url = f"https://snkrdunk.com/v1/apparels/{product_id}/sales-chart/used?range=all&salesChartOptionId={option_id}"
     headers = {"User-Agent": "Mozilla/5.0"}
