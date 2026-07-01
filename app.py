@@ -42,17 +42,28 @@ if analyze_btn:
         st.metric("最新價", f"NT$ {m_PSA['latest']:,.0f}")
         st.metric("ROI", f"{m_PSA['roi']:.2f}%")
 
-    st.write("詳細統計數據：")
-    df_metrics = pd.DataFrame([m_A, m_PSA], index=["A品", "PSA10"])
+st.write("詳細統計數據：")
+    
+    # 確保 m_A 和 m_PSA 中已經包含了 '名稱' 欄位
+    # 如果還沒放入，請確保在爬蟲後有執行: m_A['名稱'] = card_name; m_PSA['名稱'] = card_name
+    
+    df_metrics = pd.DataFrame([m_A, m_PSA])
     df_metrics['品項'] = ["A品", "PSA10"]
     
-    # 1. 為了避免格式化錯誤，先將「名稱」抽出來顯示，只對數字欄位做 format
-    df_display = df_metrics.rename(columns={
-        'latest': '最新價', 'avg_1w': '週均價', 'avg_1m': '月均價', 'avg_3m': '季均價', 'roi': 'ROI (%)'
+    # 定義你想要的欄位順序，名稱放在最左邊
+    cols = ['名稱', '品項', 'latest', 'avg_1w', 'avg_1m', 'avg_3m', 'roi']
+    
+    # 選取並重新命名欄位
+    df_display = df_metrics[cols].rename(columns={
+        'latest': '最新價', 
+        'avg_1w': '週均價', 
+        'avg_1m': '月均價', 
+        'avg_3m': '季均價', 
+        'roi': 'ROI (%)'
     })
     
-    # 2. 顯示時不使用 style.format，直接用簡單的 dataframe 顯示，確保不會報錯
-    st.dataframe(df_display)
+    # 直接顯示 DataFrame，這樣最乾淨，不會因為 style.format 出錯
+    st.dataframe(df_display, use_container_width=True)
 
     if chart_A: st.plotly_chart(chart_A, use_container_width=True, key="chart_A")
     if chart_PSA: st.plotly_chart(chart_PSA, use_container_width=True, key="chart_PSA")
