@@ -56,11 +56,8 @@ if analyze_btn:
     if '名稱' in df_display.index:
         df_display = df_display.drop(index='名稱')
     
-    # 5. 使用 style 進行格式化，確保小數點取到百分位 (四捨五入)
-    # 注意：這裡對所有數據列進行格式化
-st.write("詳細統計數據：")
-
-    # 確保這一區塊的所有程式碼頂格對齊 (4個空格)
+# 這裡的邏輯必須對齊在 4 個空格的縮排內
+    st.write("詳細統計數據：")
     df_metrics = pd.DataFrame([m_A, m_PSA], index=["A品", "PSA10"]).T
     df_display = df_metrics.drop(index='名稱')
     df_display = df_display.rename(index={
