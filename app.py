@@ -16,31 +16,24 @@ with st.sidebar:
 
 # 顯示區
 if analyze_btn:
-   with st.spinner('正在從 Snkrdunk 獲取數據...'):
+    with st.spinner('正在從 Snkrdunk 獲取數據...'):
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         
-        # 1. 抓取數據與名稱
         data_A = loop.run_until_complete(get_chart_data(product_id, 18))
         data_PSA = loop.run_until_complete(get_chart_data(product_id, 22))
-        card_name = loop.run_until_complete(get_product_name(product_id)) # 獲取名稱
+        card_name = loop.run_until_complete(get_product_name(product_id))
         
         m_A = analyze_data(data_A, cost, 0.20)
         m_PSA = analyze_data(data_PSA, cost, 0.20)
         
-        # 2. 修改這裡：將名稱加入到 dictionary 中
         m_A['名稱'] = card_name
         m_PSA['名稱'] = card_name
         
-        # 3. 處理 DataFrame
-        df_metrics = pd.DataFrame([m_A, m_PSA], index=["A品", "PSA10"])
-        
-        # 重新排列欄位，讓「名稱」出現在最前面
-        cols = ['名稱', 'latest', 'avg_1w', 'avg_1m', 'avg_3m', 'roi']
-        df_display = df_metrics[cols].rename(columns={
-            'latest': '最新價', 'avg_1w': '週均價', 'avg_1m': '月均價', 'avg_3m': '季均價', 'roi': 'ROI (%)'
-        })
-# 3. 呈現 Dashboard
+        chart_A = create_chart(data_A, "裸卡(A品) 價格趨勢")
+        chart_PSA = create_chart(data_PSA, "鑑定卡(PSA10) 價格趨勢")
+
+    # 注意：這裡縮排必須退回到與 "with st.spinner" 同一個級別 (4個空格)
     col1, col2 = st.columns(2)
 
     with col1:
@@ -53,16 +46,13 @@ if analyze_btn:
         st.metric("最新價", f"NT$ {m_PSA['latest']:,.0f}")
         st.metric("ROI", f"{m_PSA['roi']:.2f}%")
 
-    # 4. 顯示表格與圖表
     st.write("詳細統計數據：")
     df_metrics = pd.DataFrame([m_A, m_PSA], index=["A品", "PSA10"])
-    df_display = df_metrics.rename(columns={
+    cols = ['名稱', 'latest', 'avg_1w', 'avg_1m', 'avg_3m', 'roi']
+    df_display = df_metrics[cols].rename(columns={
         'latest': '最新價', 'avg_1w': '週均價', 'avg_1m': '月均價', 'avg_3m': '季均價', 'roi': 'ROI (%)'
     })
     st.dataframe(df_display.style.format("{:,.0f}"))
-
-    chart_A = create_chart(data_A, "裸卡(A品) 價格趨勢")
-    chart_PSA = create_chart(data_PSA, "鑑定卡(PSA10) 價格趨勢")
 
     if chart_A: st.plotly_chart(chart_A, use_container_width=True, key="chart_A")
     if chart_PSA: st.plotly_chart(chart_PSA, use_container_width=True, key="chart_PSA")
