@@ -64,17 +64,20 @@ if page == "卡牌分析":
             'latest': '最新價', 'avg_1w': '週均價', 'avg_1m': '月均價', 'avg_3m': '季均價', 'roi': 'ROI (%)'
         })
         st.dataframe(df_display.style.format('{:,.2f}'), use_container_width=True)
-       # --- 新邏輯：雙欄顯示兩張圖表 ---
-    st.write("---") # 分隔線
-    chart_col1, chart_col2 = st.columns(2)
-    
-    with chart_col1:
-        if res.get('chart_A'):
-            st.plotly_chart(res['chart_A'], use_container_width=True)
-            
-    with chart_col2:
-        if res.get('chart_PSA'):
-            st.plotly_chart(res['chart_PSA'], use_container_width=True)
+       # 確保只有在分析過後才執行圖表繪製
+    if 'last_analysis' in st.session_state:
+        res = st.session_state['last_analysis']
+        
+        st.write("---")
+        chart_col1, chart_col2 = st.columns(2)
+        
+        with chart_col1:
+            if res.get('chart_A'):
+                st.plotly_chart(res['chart_A'], use_container_width=True)
+                
+        with chart_col2:
+            if res.get('chart_PSA'):
+                st.plotly_chart(res['chart_PSA'], use_container_width=True)
 elif page == "卡牌庫":
     st.title("📂 卡牌庫")
     if st.session_state['card_library']:
