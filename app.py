@@ -52,8 +52,13 @@ st.write("詳細統計數據：")
     
     # 定義你想要的欄位順序，名稱放在最左邊
     cols = ['名稱', '品項', 'latest', 'avg_1w', 'avg_1m', 'avg_3m', 'roi']
-    
-    # 選取並重新命名欄位
+
+    # 這裡的 df_metrics 應該與上面的 st.write("詳細統計數據：") 對齊
+    df_metrics = pd.DataFrame([m_A, m_PSA])
+    df_metrics['品項'] = ["A品", "PSA10"]
+
+    # 欄位順序與重新命名
+    cols = ['名稱', '品項', 'latest', 'avg_1w', 'avg_1m', 'avg_3m', 'roi']
     df_display = df_metrics[cols].rename(columns={
         'latest': '最新價', 
         'avg_1w': '週均價', 
@@ -61,9 +66,7 @@ st.write("詳細統計數據：")
         'avg_3m': '季均價', 
         'roi': 'ROI (%)'
     })
-    
-    # 直接顯示 DataFrame，這樣最乾淨，不會因為 style.format 出錯
-    st.dataframe(df_display, use_container_width=True)
 
+    st.dataframe(df_display, use_container_width=True)
     if chart_A: st.plotly_chart(chart_A, use_container_width=True, key="chart_A")
     if chart_PSA: st.plotly_chart(chart_PSA, use_container_width=True, key="chart_PSA")
