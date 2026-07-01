@@ -12,7 +12,7 @@ if 'card_library' not in st.session_state:
 # 導航選單 (側邊欄)
 with st.sidebar:
     st.header("功能")
-    page = st.radio(["卡牌分析", "卡牌庫"])
+    page = st.radio( ["卡牌分析", "卡牌庫"])
     st.markdown("---")
     st.header("參數設定")
     product_id = st.text_input("商品 ID", value="826553")
