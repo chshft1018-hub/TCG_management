@@ -1,8 +1,7 @@
 import streamlit as st
 import asyncio
 import pandas as pd
-from scraper import get_chart_data, analyze_data, create_chart# 直接匯入你整理好的模組
-
+from scraper import get_chart_data, analyze_data, create_chart, get_product_name
 # 網頁設定
 st.set_page_config(page_title="卡牌投資管理", layout="wide")
 st.title("📊 卡牌投資管理系統")
