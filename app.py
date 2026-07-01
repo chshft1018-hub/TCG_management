@@ -36,13 +36,6 @@ if analyze_btn:
         st.metric("最新價", f"NT$ {m_PSA['latest']:,.0f}")
         st.metric("ROI", f"{m_PSA['roi']:.2f}%")
 
-    st.write("詳細統計數據：")
-    # 1. 準備 DataFrame，此時欄位名稱仍為英文
-    df_metrics = pd.DataFrame([m_A, m_PSA], index=["A品", "PSA10"])
-    
-    # 2. 先進行轉置 (Transpose)，讓 A品/PSA10 變成欄位，原本的指標變成 Index
-    df_display = df_metrics.T
-    
     # 3. 重新命名 Index (將 latest, avg_1w 等英文改成中文)
     df_display = df_display.rename(index={
         'latest': '最新價', 
