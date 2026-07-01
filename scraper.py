@@ -37,10 +37,22 @@ def analyze_data(json_data, cost_twd, rate=0.20):
     }
 
 def create_chart(json_data, title, rate=0.20):
-    if not json_data or 'points' not in json_data: return None
+    if not json_data or 'points' not in json_data: 
+        return None
+    
     df = pd.DataFrame(json_data['points'], columns=['timestamp', 'price_jpy'])
     df['date'] = pd.to_datetime(df['timestamp'], unit='ms')
     df['price_twd'] = df['price_jpy'] * rate
+    
     fig = px.line(df, x='date', y='price_twd', title=title)
-    fig.update_layout(template="plotly_dark", yaxis_title="價格 (NT$)")
+    
+    # 修正重點：強制 Y 軸顯示原始完整整數，不使用 k/M 縮寫
+    fig.update_layout(
+        template="plotly_dark", 
+        yaxis_title="價格 (NT$)",
+        yaxis=dict(
+            tickformat=",d",  # 使用逗號分隔的完整整數格式
+            tickmode="auto"
+        )
+    )
     return fig
