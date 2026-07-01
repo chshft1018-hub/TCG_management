@@ -41,7 +41,7 @@ if analyze_btn:
             'latest': '最新價', 'avg_1w': '週均價', 'avg_1m': '月均價', 'avg_3m': '季均價', 'roi': 'ROI (%)'
         })
     # 3. 統一渲染區塊 (在 spinner 結束後一次呈現)
-    col1, col2 = st.columns(2)
+         col1, col2 = st.columns(2)
     with col1:
         st.subheader("裸卡 (A品)")
         st.metric("最新價", f"NT$ {m_A['latest']:,.0f}")
