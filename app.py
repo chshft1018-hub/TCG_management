@@ -37,12 +37,23 @@ if analyze_btn:
         st.metric("ROI", f"{m_PSA['roi']:.2f}%")
 
     st.write("詳細統計數據：")
+    # 1.建立顯示用的 DataFrame
     df_metrics = pd.DataFrame([m_A, m_PSA])
     df_metrics['品項'] = ["A品", "PSA10"]
-    cols = ['名稱', '品項', 'latest', 'avg_1w', 'avg_1m', 'avg_3m', 'roi']
-    df_display = df_metrics[cols].rename(columns={
-        'latest': '最新價', 'avg_1w': '週均價', 'avg_1m': '月均價', 'avg_3m': '季均價', 'roi': 'ROI (%)'
+    
+    # 2. 將「名稱」設為 Index，這樣它在視覺上會獨立出來，不會每行重複顯示
+    df_metrics.set_index(['名稱', '品項'], inplace=True)
+    
+    # 3. 重新命名剩下的數值欄位
+    df_display = df_metrics.rename(columns={
+        'latest': '最新價', 
+        'avg_1w': '週均價', 
+        'avg_1m': '月均價', 
+        'avg_3m': '季均價', 
+        'roi': 'ROI (%)'
     })
+    
+    # 4. 顯示表格
     st.dataframe(df_display, use_container_width=True)
 
     if chart_A: st.plotly_chart(chart_A, use_container_width=True, key="chart_A")
