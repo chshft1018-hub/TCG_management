@@ -5,9 +5,12 @@ from scraper import get_chart_data, analyze_data, create_chart, get_product_name
 
 st.set_page_config(page_title="卡牌投資管理", layout="wide")
 
-# 初始化 Session State
+#初始化
 if 'card_library' not in st.session_state:
     st.session_state['card_library'] = []
+
+if 'last_analysis' not in st.session_state:
+    st.session_state['last_analysis'] = None
 
 # 導航選單 (側邊欄)
 with st.sidebar:
@@ -49,11 +52,16 @@ if page == "卡牌分析":
         
         # 存入庫房按鈕
         if st.button("💾 存入卡牌庫"):
-            st.session_state['card_library'].append({
-                "名稱": res['name'], "成本": res['cost'], 
-                "A品最新": res['m_A']['latest'], "PSA10最新": res['m_PSA']['latest']
-            })
-            st.success("已成功儲存！")
+            # 確保資料結構完整，直接從 res 中提取數據
+            new_data = {
+                "名稱": res['name'],
+                "成本": res['cost'],
+                "A品最新": res['m_A']['latest'],
+                "PSA10最新": res['m_PSA']['latest']
+            }
+            # 使用列表擴展方式，確保不會覆蓋原有庫存
+            st.session_state['card_library'].append(new_data)
+            st.success("已成功存入卡牌庫！")
 
         # 顯示指標與表格
         c1, c2 = st.columns(2)
