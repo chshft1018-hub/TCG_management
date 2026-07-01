@@ -44,11 +44,14 @@ if analyze_btn:
 
     st.write("詳細統計數據：")
     df_metrics = pd.DataFrame([m_A, m_PSA], index=["A品", "PSA10"])
-    cols = ['名稱', 'latest', 'avg_1w', 'avg_1m', 'avg_3m', 'roi']
-    df_display = df_metrics[cols].rename(columns={
+    
+    # 1. 為了避免格式化錯誤，先將「名稱」抽出來顯示，只對數字欄位做 format
+    df_display = df_metrics.rename(columns={
         'latest': '最新價', 'avg_1w': '週均價', 'avg_1m': '月均價', 'avg_3m': '季均價', 'roi': 'ROI (%)'
     })
-    st.dataframe(df_display.style.format("{:,.0f}"))
+    
+    # 2. 顯示時不使用 style.format，直接用簡單的 dataframe 顯示，確保不會報錯
+    st.dataframe(df_display)
 
     if chart_A: st.plotly_chart(chart_A, use_container_width=True, key="chart_A")
     if chart_PSA: st.plotly_chart(chart_PSA, use_container_width=True, key="chart_PSA")
