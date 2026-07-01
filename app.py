@@ -44,6 +44,7 @@ if analyze_btn:
 
     st.write("詳細統計數據：")
     df_metrics = pd.DataFrame([m_A, m_PSA], index=["A品", "PSA10"])
+    df_metrics['品項'] = ["A品", "PSA10"]
     
     # 1. 為了避免格式化錯誤，先將「名稱」抽出來顯示，只對數字欄位做 format
     df_display = df_metrics.rename(columns={
