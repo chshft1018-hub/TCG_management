@@ -26,37 +26,14 @@ def update_google_sheet(data_list):
 
 st.set_page_config(page_title="卡牌投資管理", layout="wide")
 
-def search_product_id_by_name(keyword):
-    if not keyword or keyword.strip() == "":
-        return None
-        
-    search_url = f"https://snkrdunk.com/en/search?search={keyword.replace(' ', '+')}"
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-    }
+# 簡化為：引導使用者去搜尋，並提供直接連結
+    search_keyword = st.text_input("輸入關鍵字 (例如: M2a 223/193)")
+    search_url = f"https://snkrdunk.com/en/search?search={search_keyword.replace(' ', '+')}"
     
-    try:
-        response = requests.get(search_url, headers=headers, timeout=15)
-        soup = BeautifulSoup(response.text, 'html.parser')
-        
-        # 尋找所有包含卡牌連結的 <a> 標籤
-        # 這些標籤通常會有特定的 class 或包含 /apparels/ 的路徑
-        links = soup.find_all('a', href=True)
-        
-        for link in links:
-            href = link['href']
-            # 這是關鍵：我們鎖定含有 '/apparels/' 且長度合理的連結
-            if '/apparels/' in href and len(href.split('/')) >= 3:
-                # 假設連結是 /en/apparels/722239，我們要抓出 722239
-                parts = href.split('/')
-                # 嘗試找出數字部分
-                for part in parts:
-                    if part.isdigit() and len(part) >= 6: # ID 通常是 6 碼以上
-                        return part
-                        
-    except Exception as e:
-        st.error(f"搜尋發生錯誤: {e}")
-    return None
+    if search_keyword:
+        st.markdown(f"[點此前往搜尋結果頁]({search_url})")
+    
+    product_id = st.text_input("請複製搜尋結果頁的商品 ID")
     
 # --- 初始化 Session State ---
 if 'card_library' not in st.session_state:
