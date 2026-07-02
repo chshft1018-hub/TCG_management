@@ -38,6 +38,7 @@ def search_product_id_by_name(keyword):
     }
     
     try:
+        st.write(f"正在存取: {search_url}")
         response = requests.get(search_url, headers=headers, timeout=15)
         response.raise_for_status()
         soup = BeautifulSoup(response.text, 'html.parser')
