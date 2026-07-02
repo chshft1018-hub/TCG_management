@@ -25,7 +25,7 @@ def update_google_sheet(data_list):
 # --- 搜尋函式 ---
 def search_product_id_by_name(keyword):
     if not keyword or keyword.strip() == "": return None
-    search_url = f"https://snkrdunk.com/en/search?search={keyword.replace(' ', '+')}"
+    search_url = f"https://snkrdunk.com/search?keywords={keyword.replace(' ', '+')}"
     headers = {"User-Agent": "Mozilla/5.0"}
     try:
         response = requests.get(search_url, headers=headers, timeout=10)
