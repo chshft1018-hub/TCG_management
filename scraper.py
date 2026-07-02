@@ -2,6 +2,9 @@ import asyncio
 import aiohttp
 import pandas as pd
 import plotly.express as px
+import requests
+from bs4 import BeautifulSoup
+
 
 async def get_chart_data(product_id, option_id):
     url = f"https://snkrdunk.com/v1/apparels/{product_id}/sales-chart/used?range=all&salesChartOptionId={option_id}"
@@ -56,3 +59,20 @@ def create_chart(json_data, title, rate=0.20):
         )
     )
     return fig
+
+# 增加這個函式到你的 scraper.py
+async def search_product_id_by_name(keyword):
+    search_url = f"https://snkrdunk.com/en/search?search={keyword.replace(' ', '+')}"
+    headers = {"User-Agent": "Mozilla/5.0"}
+    response = requests.get(search_url, headers=headers)
+    soup = BeautifulSoup(response.text, 'html.parser')
+    
+    # 找到搜尋結果的第一個商品連結
+    # 根據 SNKRDUNK 網頁結構，商品連結通常含有 /apparels/ 或 /products/
+    first_item = soup.find('a', href=lambda x: x and ('/apparels/' in x or '/products/' in x))
+    
+    if first_item:
+        # 從 URL 中提取編號 (例如 /apparels/722239 -> 722239)
+        product_id = first_item['href'].split('/')[-1]
+        return product_id
+    return None
