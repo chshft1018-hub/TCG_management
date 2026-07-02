@@ -53,7 +53,7 @@ with st.sidebar:
     st.header("參數設定")
     
     search_input = st.text_input("輸入關鍵字 (例如: M2a 223/193)")
-    search_url = f"https://snkrdunk.com/en/search?search={search_input.replace(' ', '+')}"
+    search_url = f"https://snkrdunk.com/search?keywords={search_input.replace(' ', '+').replace('/', '%2F')}"
     if search_input: st.markdown(f"[點此前往搜尋結果頁]({search_url})")
     
     product_id = st.text_input("商品 ID", value='826553')
