@@ -5,6 +5,23 @@ from scraper import get_chart_data, analyze_data, create_chart, get_product_name
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
+# --- Google Sheets 更新函式 (使用 Secrets) ---
+def update_google_sheet(data_list):
+    scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
+    
+    # 從 Streamlit Secrets 讀取 GCP 認證資訊
+    creds_dict = dict(st.secrets["gcp"])
+    creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+    
+    client = gspread.authorize(creds)
+    # 請確保試算表名稱為 "卡牌管理"
+    sheet = client.open("卡牌管理").sheet1
+    
+    # 將資料寫入 Google Sheets
+    df = pd.DataFrame(data_list)
+    sheet.clear()
+    sheet.update([df.columns.values.tolist()] + df.values.tolist())
+
 st.set_page_config(page_title="卡牌投資管理", layout="wide")
 
 # --- 初始化 Session State ---
@@ -53,16 +70,24 @@ if page == "卡牌分析":
         st.subheader(f"卡牌名稱：{res['name']}")
 
         # 這裡確保縮排完全一致
-        if st.button("💾 存入卡牌庫"):
+    # 修改後按鈕邏輯
+        if st.button("💾 存入卡牌庫並同步至雲端"):
             psa10_roi = ((res['m_PSA']['latest'] - res['cost']) / res['cost']) * 100
-            st.session_state['card_library'].append({
+            new_data = {
                 "名稱": res['name'], 
                 "成本": res['cost'],
                 "A品最新": res['m_A']['latest'], 
                 "PSA10最新": res['m_PSA']['latest'],
                 "ROI (PSA10)": f"{psa10_roi:.2f}%"
-            })
-            st.success("已成功儲存！")
+            }
+            st.session_state['card_library'].append(new_data)
+            
+            # 同步至 Google Sheets
+            try:
+                update_google_sheet(st.session_state['card_library'])
+                st.success("已成功儲存並同步至 Google Sheets！")
+            except Exception as e:
+                st.error(f"同步失敗: {e}")
 
         c1, c2 = st.columns(2)
         c1.metric("裸卡 (A品) 最新價", f"NT$ {res['m_A']['latest']:,.0f}")
