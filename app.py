@@ -25,14 +25,25 @@ def update_google_sheet(data_list):
 st.set_page_config(page_title="卡牌投資管理", layout="wide")
 
 def search_product_id_by_name(keyword):
+    # 增加檢查：如果關鍵字是空的，直接回傳 None
+    if not keyword or keyword.strip() == "":
+        return None
+        
     search_url = f"https://snkrdunk.com/en/search?search={keyword.replace(' ', '+')}"
     headers = {"User-Agent": "Mozilla/5.0"}
-    response = requests.get(search_url, headers=headers)
-    soup = BeautifulSoup(response.text, 'html.parser')
-    first_item = soup.find('a', href=lambda x: x and ('/apparels/' in x or '/products/' in x))
-    if first_item:
-        return first_item['href'].split('/')[-1]
-    return None
+    
+    try:
+        response = requests.get(search_url, headers=headers, timeout=10) # 加上超時設定
+        response.raise_for_status() # 檢查網路請求是否成功
+        
+        soup = BeautifulSoup(response.text, 'html.parser')
+        first_item = soup.find('a', href=lambda x: x and ('/apparels/' in x or '/products/' in x))
+        
+        if first_item:
+            return first_item['href'].split('/')[-1]
+    except Exception as e:
+        st.error(f"搜尋過程發生錯誤: {e}")
+        return None
     
 # --- 初始化 Session State ---
 if 'card_library' not in st.session_state:
