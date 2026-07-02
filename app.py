@@ -64,7 +64,7 @@ with st.sidebar:
     # 2. 自動搜尋按鈕
     if st.button("🔍 自動搜尋 ID"):
         with st.spinner("搜尋中..."):
-            found_id = asyncio.run(search_product_id_by_name(search_input))
+            found_id = search_product_id_by_name(search_input)
             if found_id:
                 st.session_state['temp_pid'] = found_id
                 st.success(f"找到 ID: {found_id}")
