@@ -7,3 +7,4 @@ nest_asyncio
 plotly
 gspread
 oauth2client
+beautifulsoup4
