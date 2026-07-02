@@ -30,19 +30,30 @@ def search_product_id_by_name(keyword):
     if not keyword or keyword.strip() == "":
         return None
         
+    # 將關鍵字編碼，並增加參數模擬網頁搜尋行為
     search_url = f"https://snkrdunk.com/en/search?search={keyword.replace(' ', '+')}"
-    headers = {"User-Agent": "Mozilla/5.0"}
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Referer": "https://snkrdunk.com/en/"
+    }
     
     try:
-        response = requests.get(search_url, headers=headers, timeout=10)
+        response = requests.get(search_url, headers=headers, timeout=15)
         response.raise_for_status()
         soup = BeautifulSoup(response.text, 'html.parser')
-        first_item = soup.find('a', href=lambda x: x and ('/apparels/' in x or '/products/' in x))
         
-        if first_item:
-            return first_item['href'].split('/')[-1]
+        # 修正選擇器：針對 SNKRDUNK 的搜尋結果頁面，
+        # 通常商品連結會包含 'products' 或 'apparels'，且帶有特定的 CSS class
+        # 這裡改用 find_all 並取第一個，增加穩定性
+        links = soup.select('a[href*="/apparels/"], a[href*="/products/"]')
+        
+        if links:
+            # 取得第一個連結的 ID
+            product_id = links[0]['href'].split('/')[-1]
+            return product_id
+            
     except Exception as e:
-        st.error(f"搜尋過程發生錯誤: {e}")
+        st.error(f"搜尋發生異常: {e}")
     return None
     
 # --- 初始化 Session State ---
