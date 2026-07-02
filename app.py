@@ -2,6 +2,8 @@ import streamlit as st
 import asyncio
 import pandas as pd
 from scraper import get_chart_data, analyze_data, create_chart, get_product_name
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
 
 st.set_page_config(page_title="卡牌投資管理", layout="wide")
 
