@@ -104,7 +104,7 @@ elif page == "卡牌庫":
     else:
         st.info("牌庫目前無資料。")
 res = st.session_state.get('last_analysis')
-    if res:
+        if res:
         st.subheader(f"卡牌名稱：{res['name']}")
         
         # 確保 KPI 顯示區塊...
