@@ -78,7 +78,7 @@ if page == "卡牌分析":
                 "chart_PSA": create_chart(data_PSA, "鑑定卡(PSA10) 價格趨勢")
             }
 
- res = st.session_state['last_analysis']
+    res = st.session_state['last_analysis']
     if res:
         st.subheader(f"卡牌名稱：{res['name']}")
         
