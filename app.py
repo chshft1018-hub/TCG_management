@@ -32,7 +32,7 @@ def load_google_sheet():
 
 st.set_page_config(page_title="卡牌投資管理", layout="wide")
 
-# --- Session State 初始化 (加入從雲端載入) ---
+# --- Session State 初始化 ---
 if 'card_library' not in st.session_state: 
     st.session_state['card_library'] = load_google_sheet()
 if 'last_analysis' not in st.session_state: 
@@ -78,40 +78,26 @@ if page == "卡牌分析":
             cols[2].metric("ROI (PSA10)", f"{roi:.2f}%", delta=f"{roi:.2f}%")
             cols[3].metric("市場週均價", f"NT${res['m_PSA']['avg_1w']:,.0f}")
 
-# --- 存入按鈕 (修正資料結構) ---
         if st.button("💾 存入卡牌庫"):
-            new_data = {
-                "名稱": str(res['name']), 
-                "成本": float(res['cost']),
-                "ROI": f"{roi:.2f}%"
-            }
+            new_data = {"名稱": str(res['name']), "成本": float(res['cost']), "ROI": f"{roi:.2f}%"}
             st.session_state['card_library'].append(new_data)
             update_google_sheet(st.session_state['card_library'])
             st.success("已同步至 Google Sheets")
 
-# ... (在 elif page == "卡牌庫" 區塊)
-elif page == "卡牌庫":
-    st.title("📂 卡牌庫")
-    st.session_state['card_library'] = load_google_sheet()
-    
-    if st.session_state['card_library']:
-        df = pd.DataFrame(st.session_state['card_library'])
-        # --- 關鍵修正：強制指定顯示順序與欄位 ---
-        cols_to_show = ['名稱', '成本', 'ROI']
-        # 檢查欄位是否存在，避免報錯
-        available_cols = [c for c in cols_to_show if c in df.columns]
-        st.dataframe(df[available_cols], use_container_width=True, hide_index=True)
-    else:
-        st.info("牌庫目前無資料。")
-res = st.session_state.get('last_analysis')
-if res:
-        st.subheader(f"卡牌名稱：{res['name']}")
-        
-        # 確保 KPI 顯示區塊...
-        
-        # 關鍵：圖表繪製直接使用 session_state 中保存的原始資料 (data_A/data_PSA)
+        # 圖表只會出現在卡牌分析頁面
         c1, c2 = st.columns(2)
         with c1:
             st.plotly_chart(create_professional_chart(res['data_A'], "裸卡(A品) 價格走勢"), use_container_width=True)
         with c2:
             st.plotly_chart(create_professional_chart(res['data_PSA'], "鑑定卡(PSA10) 價格走勢"), use_container_width=True)
+
+elif page == "卡牌庫":
+    st.title("📂 卡牌庫")
+    # 強制從雲端重新載入
+    df_data = load_google_sheet()
+    if df_data:
+        df = pd.DataFrame(df_data)
+        # 強制指定顯示順序：名稱 -> 成本 -> ROI
+        st.dataframe(df[['名稱', '成本', 'ROI']], use_container_width=True, hide_index=True)
+    else:
+        st.info("牌庫目前無資料。")
