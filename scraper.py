@@ -4,7 +4,7 @@ import pandas as pd
 import plotly.express as px
 import requests
 from bs4 import BeautifulSoup
-
+import plotly.graph_objects as go
 
 async def get_chart_data(product_id, option_id):
     url = f"https://snkrdunk.com/v1/apparels/{product_id}/sales-chart/used?range=all&salesChartOptionId={option_id}"
@@ -76,3 +76,25 @@ async def search_product_id_by_name(keyword):
         product_id = first_item['href'].split('/')[-1]
         return product_id
     return None
+
+def create_professional_chart(data, title):
+    # 建立專業面積圖 (Area Chart)
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=data['date'], y=data['price'],
+        fill='tozeroy', 
+        mode='lines',
+        line=dict(color='#2962FF', width=3), # 金融藍
+        name='價格'
+    ))
+    
+    fig.update_layout(
+        title=dict(text=title, font=dict(size=20, family="Arial")),
+        plot_bgcolor='white',
+        paper_bgcolor='white',
+        xaxis=dict(showgrid=True, gridcolor='#E0E0E0', title="日期"),
+        yaxis=dict(showgrid=True, gridcolor='#E0E0E0', title="價格 (NT$)"),
+        hovermode="x unified", # 金融專業標配：滑鼠懸停統一對齊
+        margin=dict(l=40, r=40, t=60, b=40)
+    )
+    return fig
