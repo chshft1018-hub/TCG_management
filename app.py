@@ -103,3 +103,15 @@ elif page == "卡牌庫":
         st.dataframe(df[available_cols], use_container_width=True, hide_index=True)
     else:
         st.info("牌庫目前無資料。")
+res = st.session_state.get('last_analysis')
+    if res:
+        st.subheader(f"卡牌名稱：{res['name']}")
+        
+        # 確保 KPI 顯示區塊...
+        
+        # 關鍵：圖表繪製直接使用 session_state 中保存的原始資料 (data_A/data_PSA)
+        c1, c2 = st.columns(2)
+        with c1:
+            st.plotly_chart(create_professional_chart(res['data_A'], "裸卡(A品) 價格走勢"), use_container_width=True)
+        with c2:
+            st.plotly_chart(create_professional_chart(res['data_PSA'], "鑑定卡(PSA10) 價格走勢"), use_container_width=True)
