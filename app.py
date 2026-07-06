@@ -96,7 +96,10 @@ elif page == "卡牌庫":
     
     if st.session_state['card_library']:
         df = pd.DataFrame(st.session_state['card_library'])
-        # 確保顯示時明確指定要顯示哪些欄位，避免 Index 被當作資料
-        st.dataframe(df, use_container_width=True, hide_index=True)
+        # --- 關鍵修正：強制指定顯示順序與欄位 ---
+        cols_to_show = ['名稱', '成本', 'ROI']
+        # 檢查欄位是否存在，避免報錯
+        available_cols = [c for c in cols_to_show if c in df.columns]
+        st.dataframe(df[available_cols], use_container_width=True, hide_index=True)
     else:
         st.info("牌庫目前無資料。")
