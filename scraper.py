@@ -77,15 +77,23 @@ async def search_product_id_by_name(keyword):
         return product_id
     return None
 
-def create_professional_chart(data, title):
-    # 建立專業面積圖 (Area Chart)
+def create_professional_chart(json_data, title, rate=0.20):
+    if not json_data or 'points' not in json_data: 
+        return None
+    
+    # 1. 轉換原始資料為 DataFrame
+    df = pd.DataFrame(json_data['points'], columns=['timestamp', 'price_jpy'])
+    df['date'] = pd.to_datetime(df['timestamp'], unit='ms')
+    df['price'] = df['price_jpy'] * rate # 計算台幣價格
+    
+    # 2. 建立專業面積圖
     fig = go.Figure()
     fig.add_trace(go.Scatter(
-        x=data['date'], y=data['price'],
+        x=df['date'], y=df['price'], # 現在 df 已經有 'date' 和 'price' 欄位了
         fill='tozeroy', 
         mode='lines',
-        line=dict(color='#2962FF', width=3), # 金融藍
-        name='價格'
+        line=dict(color='#2962FF', width=3),
+        name='價格 (NT$)'
     ))
     
     fig.update_layout(
@@ -94,7 +102,7 @@ def create_professional_chart(data, title):
         paper_bgcolor='white',
         xaxis=dict(showgrid=True, gridcolor='#E0E0E0', title="日期"),
         yaxis=dict(showgrid=True, gridcolor='#E0E0E0', title="價格 (NT$)"),
-        hovermode="x unified", # 金融專業標配：滑鼠懸停統一對齊
+        hovermode="x unified",
         margin=dict(l=40, r=40, t=60, b=40)
     )
     return fig
