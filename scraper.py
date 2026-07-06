@@ -78,30 +78,25 @@ async def search_product_id_by_name(keyword):
     return None
 
 def create_professional_chart(json_data, title, rate=0.20):
-    if not json_data or 'points' not in json_data: 
-        return None
+    if not json_data or 'points' not in json_data: return None
     
-    # 1. 轉換原始資料為 DataFrame
     df = pd.DataFrame(json_data['points'], columns=['timestamp', 'price_jpy'])
     df['date'] = pd.to_datetime(df['timestamp'], unit='ms')
-    df['price'] = df['price_jpy'] * rate # 計算台幣價格
+    df['price'] = df['price_jpy'] * rate
     
-    # 2. 建立專業面積圖
     fig = go.Figure()
-    fig.add_trace(go.Scatter(
-        x=df['date'], y=df['price'], # 現在 df 已經有 'date' 和 'price' 欄位了
-        fill='tozeroy', 
-        mode='lines',
-        line=dict(color='#2962FF', width=3),
-        name='價格 (NT$)'
-    ))
+    fig.add_trace(go.Scatter(x=df['date'], y=df['price'], fill='tozeroy', mode='lines', line=dict(color='#2962FF', width=3)))
     
     fig.update_layout(
         title=dict(text=title, font=dict(size=20, family="Arial")),
         plot_bgcolor='white',
         paper_bgcolor='white',
         xaxis=dict(showgrid=True, gridcolor='#E0E0E0', title="日期"),
-        yaxis=dict(showgrid=True, gridcolor='#E0E0E0', title="價格 (NT$)"),
+        yaxis=dict(
+            showgrid=True, gridcolor='#E0E0E0', title="價格 (NT$)",
+            tickformat=",d",        # 使用逗號分隔的整數格式
+            exponentformat="none"   # 強制取消 k, M 縮寫
+        ),
         hovermode="x unified",
         margin=dict(l=40, r=40, t=60, b=40)
     )
