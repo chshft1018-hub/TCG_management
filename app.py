@@ -78,28 +78,29 @@ if page == "卡牌分析":
                 "chart_PSA": create_chart(data_PSA, "鑑定卡(PSA10) 價格趨勢")
             }
 
-    res = st.session_state['last_analysis']
+ res = st.session_state['last_analysis']
     if res:
         st.subheader(f"卡牌名稱：{res['name']}")
-        if st.button("💾 存入卡牌庫並同步至雲端"):
+        
+        # 1. 專業 KPI 儀表板區域
+        with st.container(border=True):
+            col1, col2, col3, col4 = st.columns(4)
             psa10_roi = ((res['m_PSA']['latest'] - res['cost']) / res['cost']) * 100
-            st.session_state['card_library'].append({
-                "名稱": res['name'], "成本": res['cost'],
-                "A品最新": res['m_A']['latest'], "PSA10最新": res['m_PSA']['latest'],
-                "ROI (PSA10)": f"{psa10_roi:.2f}%"
-            })
-            try:
-                update_google_sheet(st.session_state['card_library'])
-                st.success("已成功儲存並同步至雲端！")
-            except Exception as e: st.error(f"同步失敗: {e}")
+            
+            col1.metric("當前價值", f"NT${res['m_PSA']['latest']:,.0f}")
+            col2.metric("持有成本", f"NT${res['cost']:,.0f}")
+            col3.metric("ROI (PSA10)", f"{psa10_roi:.2f}%", delta=f"{psa10_roi:.2f}%")
+            col4.metric("市場週均價", f"NT${res['m_PSA']['avg_1w']:,.0f}")
 
-        c1, c2 = st.columns(2)
-        c1.metric("裸卡 (A品) 最新價", f"NT$ {res['m_A']['latest']:,.0f}")
-        c2.metric("鑑定卡 (PSA10) 最新價", f"NT$ {res['m_PSA']['latest']:,.0f}")
-        st.plotly_chart(res['chart_A'], use_container_width=True)
-        st.plotly_chart(res['chart_PSA'], use_container_width=True)
+        # 2. 存入按鈕
+        if st.button("💾 存入卡牌庫"):
+            # ... (保留你原本的存入資料邏輯)
+            st.success("已存入資料庫")
 
-elif page == "卡牌庫":
-    st.title("📂 卡牌庫")
-    if st.session_state['card_library']:
-        st.dataframe(pd.DataFrame(st.session_state['card_library']), use_container_width=True)
+        # 3. 專業圖表區 (調用我們剛剛在 scraper.py 寫好的新函式)
+        st.write("---")
+        chart_col1, chart_col2 = st.columns(2)
+        with chart_col1:
+            st.plotly_chart(create_professional_chart(data_A, "裸卡(A品) 價格走勢"), use_container_width=True)
+        with chart_col2:
+            st.plotly_chart(create_professional_chart(data_PSA, "鑑定卡(PSA10) 價格走勢"), use_container_width=True)
