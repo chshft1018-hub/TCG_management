@@ -1,31 +1,42 @@
 import streamlit as st
 import asyncio
-import requests
-from bs4 import BeautifulSoup
 import pandas as pd
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from scraper import get_chart_data, analyze_data, get_product_name, create_professional_chart
 
-# --- Google Sheets 更新函式 ---
-def update_google_sheet(data_list):
+# --- Google Sheets 工具函式 ---
+def get_gspread_client():
     scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
     creds_dict = dict(st.secrets["gcp"])
     if isinstance(creds_dict.get("private_key"), str):
         creds_dict["private_key"] = creds_dict["private_key"].replace('\\n', '\n')
     creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
-    client = gspread.authorize(creds)
+    return gspread.authorize(creds)
+
+def update_google_sheet(data_list):
+    client = get_gspread_client()
     sheet = client.open("卡牌管理").sheet1
     df = pd.DataFrame(data_list).fillna('')
     sheet.clear()
     sheet.append_row(df.columns.values.tolist())
     sheet.append_rows(df.values.tolist())
 
+def load_google_sheet():
+    try:
+        client = get_gspread_client()
+        sheet = client.open("卡牌管理").sheet1
+        return sheet.get_all_records()
+    except:
+        return []
+
 st.set_page_config(page_title="卡牌投資管理", layout="wide")
 
-# --- Session State 初始化 ---
-if 'card_library' not in st.session_state: st.session_state['card_library'] = []
-if 'last_analysis' not in st.session_state: st.session_state['last_analysis'] = None
+# --- Session State 初始化 (加入從雲端載入) ---
+if 'card_library' not in st.session_state: 
+    st.session_state['card_library'] = load_google_sheet()
+if 'last_analysis' not in st.session_state: 
+    st.session_state['last_analysis'] = None
 
 # --- 側邊欄 ---
 with st.sidebar:
@@ -49,12 +60,11 @@ if page == "卡牌分析":
             data_A = loop.run_until_complete(get_chart_data(product_id, 18))
             data_PSA = loop.run_until_complete(get_chart_data(product_id, 22))
             card_name = loop.run_until_complete(get_product_name(product_id))
-            
             st.session_state['last_analysis'] = {
                 "name": card_name, "cost": cost, 
                 "m_A": analyze_data(data_A, cost, 0.20), 
                 "m_PSA": analyze_data(data_PSA, cost, 0.20),
-                "data_A": data_A, "data_PSA": data_PSA  # 儲存原始資料供繪圖用
+                "data_A": data_A, "data_PSA": data_PSA
             }
 
     res = st.session_state.get('last_analysis')
@@ -69,7 +79,7 @@ if page == "卡牌分析":
             cols[3].metric("市場週均價", f"NT${res['m_PSA']['avg_1w']:,.0f}")
 
         if st.button("💾 存入卡牌庫"):
-            new_data = {"名稱": res['name'], "成本": res['cost'], "ROI": f"{roi:.2f}%"}
+            new_data = {"名稱": res['name'], "成本": float(res['cost']), "ROI": f"{roi:.2f}%"}
             st.session_state['card_library'].append(new_data)
             update_google_sheet(st.session_state['card_library'])
             st.success("已同步至 Google Sheets")
@@ -77,3 +87,12 @@ if page == "卡牌分析":
         c1, c2 = st.columns(2)
         c1.plotly_chart(create_professional_chart(res['data_A'], "裸卡(A品) 價格走勢"), use_container_width=True)
         c2.plotly_chart(create_professional_chart(res['data_PSA'], "鑑定卡(PSA10) 價格走勢"), use_container_width=True)
+
+elif page == "卡牌庫":
+    st.title("📂 卡牌庫")
+    # 強制載入最新資料確保不為空
+    st.session_state['card_library'] = load_google_sheet()
+    if st.session_state['card_library']:
+        st.dataframe(pd.DataFrame(st.session_state['card_library']), use_container_width=True)
+    else:
+        st.info("牌庫目前無資料或尚未同步。")
