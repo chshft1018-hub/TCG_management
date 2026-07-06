@@ -78,21 +78,25 @@ if page == "卡牌分析":
             cols[2].metric("ROI (PSA10)", f"{roi:.2f}%", delta=f"{roi:.2f}%")
             cols[3].metric("市場週均價", f"NT${res['m_PSA']['avg_1w']:,.0f}")
 
+# --- 存入按鈕 (修正資料結構) ---
         if st.button("💾 存入卡牌庫"):
-            new_data = {"名稱": res['name'], "成本": float(res['cost']), "ROI": f"{roi:.2f}%"}
+            new_data = {
+                "名稱": str(res['name']), 
+                "成本": float(res['cost']),
+                "ROI": f"{roi:.2f}%"
+            }
             st.session_state['card_library'].append(new_data)
             update_google_sheet(st.session_state['card_library'])
             st.success("已同步至 Google Sheets")
 
-        c1, c2 = st.columns(2)
-        c1.plotly_chart(create_professional_chart(res['data_A'], "裸卡(A品) 價格走勢"), use_container_width=True)
-        c2.plotly_chart(create_professional_chart(res['data_PSA'], "鑑定卡(PSA10) 價格走勢"), use_container_width=True)
-
+# ... (在 elif page == "卡牌庫" 區塊)
 elif page == "卡牌庫":
     st.title("📂 卡牌庫")
-    # 強制載入最新資料確保不為空
     st.session_state['card_library'] = load_google_sheet()
+    
     if st.session_state['card_library']:
-        st.dataframe(pd.DataFrame(st.session_state['card_library']), use_container_width=True)
+        df = pd.DataFrame(st.session_state['card_library'])
+        # 確保顯示時明確指定要顯示哪些欄位，避免 Index 被當作資料
+        st.dataframe(df, use_container_width=True, hide_index=True)
     else:
-        st.info("牌庫目前無資料或尚未同步。")
+        st.info("牌庫目前無資料。")
