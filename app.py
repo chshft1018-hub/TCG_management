@@ -6,6 +6,7 @@ import pandas as pd
 from scraper import get_chart_data, analyze_data, create_chart, get_product_name
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
+from scraper import get_chart_data, analyze_data, create_professional_chart, get_product_name
 
 # --- Google Sheets 更新函式 ---
 def update_google_sheet(data_list):
