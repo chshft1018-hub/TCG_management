@@ -40,9 +40,20 @@ if 'last_analysis' not in st.session_state:
     st.session_state['last_analysis'] = None
 
 # --- 側邊欄 ---
+# 1. 側邊欄定義區塊 (確保按鈕在這裡定義)
 with st.sidebar:
-    st.header("功能")
-    page = st.radio("請選擇功能", ["卡牌分析", "卡牌庫"])
+    st.header("參數設定")
+    # ... 其他輸入 ...
+    analyze_btn = st.button("立即分析")  # 按鈕在這裡定義，變數才會產生
+
+# 2. 頁面邏輯區塊 (確保在按鈕定義後才判斷)
+if page == "卡牌分析":
+    st.title("📊 卡牌查價")
+    
+    # 確保這一行在 analyze_btn 定義之後
+    if analyze_btn: 
+        with st.spinner('正在獲取數據...'):
+            # ... 你的邏輯 ...
     
     st.markdown("---")
     st.header("PSA POP 查詢")
