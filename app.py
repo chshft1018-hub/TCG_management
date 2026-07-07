@@ -106,11 +106,17 @@ elif page == "卡牌庫":
 # 在 app.py 的卡牌分析區塊中
 cert_input = st.sidebar.text_input("輸入 PSA 憑證編號 (Cert Number)")
 
+# --- app.py 中的查詢顯示邏輯 ---
 if st.sidebar.button("查詢 PSA 數據"):
-    psa_info = get_psa_pop_by_cert(cert_input)
-    if psa_info:
-        # 假設 API 回傳結構中包含 population 資訊
-        st.success(f"鑑定等級: {psa_info.get('Grade')}")
-        st.metric("PSA 10 POP 數量", psa_info.get('Pop', '未提供'))
-    else:
-        st.error("無法取得 PSA 數據，請檢查憑證編號或 Token")
+    with st.spinner("連接 PSA API 中..."):
+        psa_info = get_psa_pop_by_cert(cert_input)
+        
+        # 關鍵修正：檢查 psa_info 是否真的為字典
+        if isinstance(psa_info, dict):
+            grade = psa_info.get('Grade', 'N/A')
+            pop = psa_info.get('Pop', 'N/A')
+            st.success(f"鑑定等級: {grade}")
+            st.metric("PSA 10 POP 數量", pop)
+        else:
+            # 如果是字串錯誤訊息，用 error 顯示出來
+            st.error(f"無法取得 PSA 數據，錯誤訊息: {psa_info}")
