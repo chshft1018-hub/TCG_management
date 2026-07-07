@@ -5,6 +5,7 @@ import plotly.express as px
 import requests
 from bs4 import BeautifulSoup
 import plotly.graph_objects as go
+import requests
 
 async def get_chart_data(product_id, option_id):
     url = f"https://snkrdunk.com/v1/apparels/{product_id}/sales-chart/used?range=all&salesChartOptionId={option_id}"
@@ -101,3 +102,22 @@ def create_professional_chart(json_data, title, rate=0.20):
         margin=dict(l=40, r=40, t=60, b=40)
     )
     return fig
+
+def get_psa_pop_by_cert(cert_number):
+    # 讀取 secret 中的 token
+    token = st.secrets["psa"]["api_token"]
+    
+    url = f"https://api.psacard.com/publicapi/cert/GetByCertNumber/{cert_number}"
+    headers = {
+        "Authorization": f"bearer {token}",
+        "Content-Type": "application/json"
+    }
+    
+    try:
+        response = requests.get(url, headers=headers)
+        if response.status_code == 200:
+            return response.json() # 這會包含該憑證的詳細資料與 POP 數據
+        else:
+            return None
+    except Exception as e:
+        return None
