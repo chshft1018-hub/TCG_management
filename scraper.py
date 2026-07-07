@@ -81,15 +81,22 @@ async def search_product_id_by_name(keyword):
         return product_id
     return None
 
-def create_professional_chart(json_data, title, rate=0.20):
-    if not json_data or 'points' not in json_data: return None
-    
-    df = pd.DataFrame(json_data['points'], columns=['timestamp', 'price_jpy'])
-    df['date'] = pd.to_datetime(df['timestamp'], unit='ms')
-    df['price'] = df['price_jpy'] * rate
-    
+def create_combined_chart(data_A, data_PSA, title):
     fig = go.Figure()
-    fig.add_trace(go.Scatter(x=df['date'], y=df['price'], fill='tozeroy', mode='lines', line=dict(color='#2962FF', width=3)))
+    
+    # 處理裸卡數據
+    if data_A and 'points' in data_A:
+        df_A = pd.DataFrame(data_A['points'], columns=['timestamp', 'price_jpy'])
+        df_A['date'] = pd.to_datetime(df_A['timestamp'], unit='ms')
+        df_A['price'] = df_A['price_jpy'] * 0.20
+        fig.add_trace(go.Scatter(x=df_A['date'], y=df_A['price'], name='裸卡 (A品)', line=dict(color='#FF9800', width=2)))
+        
+    # 處理 PSA10 數據
+    if data_PSA and 'points' in data_PSA:
+        df_PSA = pd.DataFrame(data_PSA['points'], columns=['timestamp', 'price_jpy'])
+        df_PSA['date'] = pd.to_datetime(df_PSA['timestamp'], unit='ms')
+        df_PSA['price'] = df_PSA['price_jpy'] * 0.20
+        fig.add_trace(go.Scatter(x=df_PSA['date'], y=df_PSA['price'], name='鑑定卡 (PSA10)', line=dict(color='#2962FF', width=3)))
     
     fig.update_layout(
         title=dict(text=title, font=dict(size=20, family="Arial")),
