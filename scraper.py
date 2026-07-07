@@ -82,25 +82,37 @@ def create_combined_chart(data_A, data_PSA, title):
 # --- 工具與分析 ---
 
 def get_psa_pop_from_cert_url(cert_url):
-    headers = {"User-Agent": "Mozilla/5.0"}
+    # 使用更真實的瀏覽器指紋
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Referer": "https://www.psacard.com/"
+    }
     try:
-        response = requests.get(cert_url, headers=headers, timeout=15)
+        # 增加 timeout 確保連線穩定
+        response = requests.get(cert_url, headers=headers, timeout=20)
+        
+        # 檢查是否被 Cloudflare 擋住
+        if response.status_code == 403:
+            return "爬取失敗: 被網站防火牆攔截 (403 Forbidden)"
+            
         soup = BeautifulSoup(response.text, 'html.parser')
         text_content = soup.get_text()
+        
+        # 增加 Debug：如果取不到資料，印出前 500 個字元方便排查
+        if not text_content or len(text_content) < 500:
+            return "爬取失敗: 頁面內容為空或無法加載"
+
         data = {"total": "0", "higher": "0"}
         total_match = re.search(r"Total Population.*?(\d+)", text_content, re.IGNORECASE | re.DOTALL)
         higher_match = re.search(r"Pop Higher.*?(\d+)", text_content, re.IGNORECASE | re.DOTALL)
+        
         if total_match: data['total'] = total_match.group(1)
         if higher_match: data['higher'] = higher_match.group(1)
-        return data if data['total'] != "0" else "未偵測到數據"
+        
+        return data if data['total'] != "0" else "未偵測到 Pop 數據，請檢查憑證是否正確"
     except Exception as e:
         return f"爬取失敗: {str(e)}"
-
-def calculate_investment_metrics(json_data, cost_twd, rate=0.20):
-    if not json_data or 'points' not in json_data: return None
-    df = pd.DataFrame(json_data['points'], columns=['timestamp', 'price_jpy'])
-    df['price_twd'] = df['price_jpy'] * rate
-    now = pd.Timestamp.now()
     
     # 動態回退邏輯
     for days in [180, 60, 30]:
