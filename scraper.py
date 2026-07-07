@@ -63,7 +63,14 @@ def create_combined_chart(data_A, data_PSA, title):
         df_PSA['date'] = pd.to_datetime(df_PSA['timestamp'], unit='ms')
         df_PSA['price'] = df_PSA['price_jpy'] * 0.20
         fig.add_trace(go.Scatter(x=df_PSA['date'], y=df_PSA['price'], name='鑑定卡 (PSA10)', line=dict(color='#2962FF', width=3)))
-    fig.update_layout(title=title, plot_bgcolor='white', hovermode="x unified", yaxis_title="價格 (NT$)", tickformat=",d")
+    
+    fig.update_layout(
+        title=title, 
+        plot_bgcolor='white', 
+        hovermode="x unified",
+        xaxis=dict(title="日期"),
+        yaxis=dict(title="價格 (NT$)", tickformat=",d") 
+    )
     return fig
 
 def get_psa_pop_from_cert_url(cert_url):
