@@ -38,13 +38,23 @@ if 'card_library' not in st.session_state: st.session_state['card_library'] = lo
 if 'last_analysis' not in st.session_state: st.session_state['last_analysis'] = None
 
 # --- 側邊欄 ---
+# --- 側邊欄 ---
 with st.sidebar:
     st.header("功能")
     page = st.radio("請選擇功能", ["卡牌分析", "卡牌庫"])
+    
     st.markdown("---")
-    st.header("參數設定")
+    st.header("搜尋與設定")
+    
+    # 1. 找回關鍵字搜尋
+    search_input = st.text_input("輸入關鍵字 (例如: M2a 223/193)")
+    if search_input:
+        search_url = f"https://snkrdunk.com/search?keywords={search_input.replace(' ', '+').replace('/', '%2F')}"
+        st.markdown(f"[點此前往搜尋結果頁]({search_url})")
+    
+    # 2. 參數設定
     product_id = st.text_input("商品 ID", value='826553')
-    cost = st.number_input("持有成本 (NT$)", value=15000.0)
+    cost = st.number_input("持有成本 (NT$)", value=10000.0)
     analyze_btn = st.button("立即分析")
     
     st.markdown("---")
