@@ -3,11 +3,11 @@ import asyncio
 import pandas as pd
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
-# 確保這些名稱在 scraper.py 中都有正確定義
 from scraper import (get_chart_data, analyze_data, get_product_name, 
                      create_professional_chart, get_psa_pop_from_cert_url,
                      calculate_investment_metrics, create_combined_chart)
 
+# --- Google Sheets 工具函式 ---
 def get_gspread_client():
     scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
     creds_dict = dict(st.secrets["gcp"])
@@ -34,24 +34,21 @@ def load_google_sheet():
 
 st.set_page_config(page_title="卡牌投資管理", layout="wide")
 
+# --- Session State 初始化 ---
 if 'card_library' not in st.session_state: st.session_state['card_library'] = load_google_sheet()
 if 'last_analysis' not in st.session_state: st.session_state['last_analysis'] = None
 
-# --- 側邊欄完整修正代碼 ---
+# --- 側邊欄 ---
 with st.sidebar:
     st.header("功能設定")
     page = st.radio("請選擇功能", ["卡牌分析", "卡牌庫"])
-    
     st.markdown("---")
     st.header("搜尋與設定")
-    
-    # 1. 搜尋欄位 (這是你遺失的部分)
     search_input = st.text_input("輸入關鍵字 (例如: M2a 223/193)")
     if search_input:
         search_url = f"https://snkrdunk.com/search?keywords={search_input.replace(' ', '+').replace('/', '%2F')}"
         st.markdown(f"[點此前往搜尋結果頁]({search_url})")
     
-    # 2. 參數設定
     product_id = st.text_input("商品 ID", value='826553')
     cost = st.number_input("持有成本 (NT$)", value=10000.0)
     analyze_btn = st.button("立即分析")
@@ -64,8 +61,10 @@ with st.sidebar:
             url = cert_input if cert_input.startswith("http") else f"https://www.psacard.com/cert/{cert_input}/psa"
             st.session_state['psa_data'] = get_psa_pop_from_cert_url(url)
 
+# --- 主要頁面邏輯 ---
 if page == "卡牌分析":
     st.title("📊 卡牌查價")
+    
     if analyze_btn:
         with st.spinner('正在獲取數據...'):
             loop = asyncio.new_event_loop()
@@ -83,6 +82,21 @@ if page == "卡牌分析":
     res = st.session_state.get('last_analysis')
     if res:
         st.subheader(f"卡牌名稱：{res['name']}")
+        
+        # 存入按鈕 (必須放在 if res: 內，並正確縮排)
+        if st.button("💾 存入卡牌庫"):
+            roi_val = ((res['m_PSA']['latest'] - res['cost']) / res['cost']) * 100
+            new_data = {
+                "名稱": str(res['name']), 
+                "成本": float(res['cost']), 
+                "ROI": f"{roi_val:.2f}%"
+            }
+            st.session_state['card_library'].append(new_data)
+            update_google_sheet(st.session_state['card_library'])
+            st.session_state['card_library'] = load_google_sheet()
+            st.success("已成功存入卡牌庫！")
+
+        # PSA 與 ROI 指標
         if 'psa_data' in st.session_state and isinstance(st.session_state['psa_data'], dict):
             d = st.session_state['psa_data']
             c1, c2 = st.columns(2)
@@ -96,6 +110,7 @@ if page == "卡牌分析":
         cols[2].metric("ROI (PSA10)", f"{roi:.2f}%")
         cols[3].metric("市場週均價", f"NT${res['m_PSA']['avg_1w']:,.0f}")
 
+        # 60天策略與疊圖
         metrics = calculate_investment_metrics(res['data_PSA'], cost)
         if metrics:
             st.subheader("📈 60天投資策略面板")
@@ -109,18 +124,11 @@ if page == "卡牌分析":
         fig = create_combined_chart(res['data_A'], res['data_PSA'], "走勢比較")
         st.plotly_chart(fig, use_container_width=True)
 
-if st.button("💾 存入卡牌庫"):
-            new_data = {
-                "名稱": str(res['name']), 
-                "成本": float(res['cost']), 
-                "ROI": f"{roi:.2f}%"
-            }
-            # 更新 Session State
-            st.session_state['card_library'].append(new_data)
-            # 寫入 Google Sheets
-            update_google_sheet(st.session_state['card_library'])
-            # 【關鍵】強制重新讀取一次，確保資料一致
-            st.session_state['card_library'] = load_google_sheet()
-            st.success("已同步至 Google Sheets 並更新卡牌庫")
-            update_google_sheet(st.session_state['card_library'])
-            st.success("已同步至 Sheets")
+elif page == "卡牌庫":
+    st.title("📂 卡牌庫")
+    df_data = load_google_sheet() # 直接從雲端讀取最新狀態
+    if df_data:
+        df = pd.DataFrame(df_data)
+        st.dataframe(df, use_container_width=True, hide_index=True)
+    else:
+        st.info("牌庫目前無資料。")
