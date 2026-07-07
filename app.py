@@ -53,18 +53,18 @@ with st.sidebar:
     cost = st.number_input("持有成本 (NT$)", value=10000.0)
     analyze_btn = st.button("立即分析")
     
-st.header("PSA POP 查詢")
+    st.markdown("---")
+    # 這裡確保縮排正確，與上方的 st.header 對齊
+    st.header("PSA POP 查詢")
     cert_input = st.text_input("輸入 PSA 網址或憑證編號")
     if st.button("查詢 PSA 數據"):
         with st.spinner("解析中..."):
-            # 判斷是否為網址，若非網址則自動組合
             if cert_input.startswith("http"):
                 url = cert_input
             else:
                 url = f"https://www.psacard.com/cert/{cert_input}/psa"
-            
-            # 使用我們修正後的爬蟲函式
             st.session_state['psa_data'] = get_psa_pop_from_cert_url(url)
+
 # --- 主要頁面邏輯 ---
 if page == "卡牌分析":
     st.title("📊 卡牌查價")
@@ -108,7 +108,6 @@ if page == "卡牌分析":
         if metrics:
             st.subheader("📈 60天投資策略面板")
             col1, col2, col3, col4 = st.columns(4)
-            # 使用修正後的 sma_period Key
             col1.metric("60日均價 (SMA)", f"NT${metrics['sma_period']:,.0f}")
             col2.metric("乖離率", f"{metrics['bias_rate']:.2f}%", delta_color="inverse" if metrics['bias_rate'] < 0 else "normal")
             col3.metric("60天預測價", f"NT${metrics['projected_60d']:,.0f}")
