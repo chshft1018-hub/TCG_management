@@ -106,15 +106,16 @@ elif page == "卡牌庫":
 # 在 app.py 的卡牌分析區塊中
 cert_input = st.sidebar.text_input("輸入 PSA 憑證編號 (Cert Number)")
 
-if st.sidebar.button("查詢 PSA 數據"):
-    with st.spinner("連接 PSA API 中..."):
-        # 從這獲取 token
-        psa_token = st.secrets["psa"]["api_token"] 
-        # 傳入 token 進行查詢
-        psa_info = get_psa_pop_by_cert(cert_input, psa_token)
-        
-        if isinstance(psa_info, dict):
-            st.success(f"鑑定等級: {psa_info.get('Grade')}")
-            st.metric("PSA 10 POP 數量", psa_info.get('Pop', '未提供'))
+# app.py
+cert_url = st.sidebar.text_input("輸入 PSA 憑證網址")
+
+if st.sidebar.button("查詢該卡片 POP 數據"):
+    with st.spinner("正在解析 PSA 頁面..."):
+        data = get_psa_pop_from_cert_url(cert_url)
+        if isinstance(data, dict):
+            st.success("查詢成功！")
+            cols = st.columns(2)
+            cols[0].metric("總鑑定數量 (Total Pop)", data.get('total', 'N/A'))
+            cols[1].metric("高於此卡數量 (Pop Higher)", data.get('higher', 'N/A'))
         else:
-            st.error(f"PSA API 請求失敗: {psa_info}")
+            st.error(f"錯誤: {data}")
