@@ -37,14 +37,25 @@ st.set_page_config(page_title="卡牌投資管理", layout="wide")
 if 'card_library' not in st.session_state: st.session_state['card_library'] = load_google_sheet()
 if 'last_analysis' not in st.session_state: st.session_state['last_analysis'] = None
 
+# --- 側邊欄完整修正代碼 ---
 with st.sidebar:
-    st.header("功能")
+    st.header("功能設定")
     page = st.radio("請選擇功能", ["卡牌分析", "卡牌庫"])
+    
     st.markdown("---")
     st.header("搜尋與設定")
+    
+    # 1. 搜尋欄位 (這是你遺失的部分)
+    search_input = st.text_input("輸入關鍵字 (例如: M2a 223/193)")
+    if search_input:
+        search_url = f"https://snkrdunk.com/search?keywords={search_input.replace(' ', '+').replace('/', '%2F')}"
+        st.markdown(f"[點此前往搜尋結果頁]({search_url})")
+    
+    # 2. 參數設定
     product_id = st.text_input("商品 ID", value='826553')
     cost = st.number_input("持有成本 (NT$)", value=10000.0)
     analyze_btn = st.button("立即分析")
+    
     st.markdown("---")
     st.header("PSA POP 查詢")
     cert_input = st.text_input("輸入 PSA 網址或憑證編號")
