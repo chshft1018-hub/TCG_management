@@ -4,7 +4,8 @@ import pandas as pd
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from scraper import get_chart_data, analyze_data, get_product_name, create_professional_chart
-
+from scraper import (get_chart_data, analyze_data, get_product_name, 
+                     create_professional_chart, get_psa_pop_by_cert)
 # --- Google Sheets 工具函式 ---
 def get_gspread_client():
     scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
