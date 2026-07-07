@@ -4,9 +4,10 @@ import pandas as pd
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from scraper import (get_chart_data, analyze_data, get_product_name, 
-                     create_professional_chart, get_psa_pop_from_cert_url)
+                     create_professional_chart, get_psa_pop_from_cert_url,
+                     calculate_investment_metrics)
 
-# --- Google Sheets 工具函式 ---
+# --- 工具函式 ---
 def get_gspread_client():
     scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
     creds_dict = dict(st.secrets["gcp"])
@@ -38,21 +39,17 @@ if 'card_library' not in st.session_state: st.session_state['card_library'] = lo
 if 'last_analysis' not in st.session_state: st.session_state['last_analysis'] = None
 
 # --- 側邊欄 ---
-# --- 側邊欄 ---
 with st.sidebar:
     st.header("功能")
     page = st.radio("請選擇功能", ["卡牌分析", "卡牌庫"])
     
     st.markdown("---")
     st.header("搜尋與設定")
-    
-    # 1. 找回關鍵字搜尋
     search_input = st.text_input("輸入關鍵字 (例如: M2a 223/193)")
     if search_input:
         search_url = f"https://snkrdunk.com/search?keywords={search_input.replace(' ', '+').replace('/', '%2F')}"
         st.markdown(f"[點此前往搜尋結果頁]({search_url})")
     
-    # 2. 參數設定
     product_id = st.text_input("商品 ID", value='826553')
     cost = st.number_input("持有成本 (NT$)", value=10000.0)
     analyze_btn = st.button("立即分析")
@@ -64,11 +61,10 @@ with st.sidebar:
         with st.spinner("解析中..."):
             st.session_state['psa_data'] = get_psa_pop_from_cert_url(cert_url)
 
-# --- 主要頁面邏輯 ---
+# --- 頁面邏輯 ---
 if page == "卡牌分析":
     st.title("📊 卡牌查價")
     
-    # 1. 數據獲取邏輯
     if analyze_btn:
         with st.spinner('正在獲取數據...'):
             loop = asyncio.new_event_loop()
@@ -83,18 +79,18 @@ if page == "卡牌分析":
                 "data_A": data_A, "data_PSA": data_PSA
             }
 
-    # 2. 顯示邏輯
     res = st.session_state.get('last_analysis')
     if res:
         st.subheader(f"卡牌名稱：{res['name']}")
         
-        # PSA 結果顯示
+        # PSA 數據顯示
         if 'psa_data' in st.session_state and isinstance(st.session_state['psa_data'], dict):
             d = st.session_state['psa_data']
             cp1, cp2 = st.columns(2)
             cp1.metric("總鑑定數量 (Total Pop)", d.get('total', '0'))
             cp2.metric("高於此卡數量 (Pop Higher)", d.get('higher', '0'))
         
+        # 投資指標區塊
         with st.container(border=True):
             cols = st.columns(4)
             roi = ((res['m_PSA']['latest'] - res['cost']) / res['cost']) * 100
@@ -102,6 +98,23 @@ if page == "卡牌分析":
             cols[1].metric("持有成本", f"NT${res['cost']:,.0f}")
             cols[2].metric("ROI (PSA10)", f"{roi:.2f}%", delta=f"{roi:.2f}%")
             cols[3].metric("市場週均價", f"NT${res['m_PSA']['avg_1w']:,.0f}")
+
+        # 60天投資策略面板
+        metrics = calculate_investment_metrics(res['data_PSA'], cost)
+        if metrics:
+            st.subheader("📈 60天投資策略面板")
+            col1, col2, col3, col4 = st.columns(4)
+            col1.metric("60日均價 (SMA60)", f"NT${metrics['sma60']:,.0f}")
+            col2.metric("乖離率", f"{metrics['bias_rate']:.2f}%", delta_color="inverse" if metrics['bias_rate'] < 0 else "normal")
+            col3.metric("60天預測價", f"NT${metrics['projected_60d']:,.0f}")
+            col4.metric("預期 ROI", f"{metrics['roi_60d']:.2f}%")
+            
+            if metrics['bias_rate'] < -5 and metrics['roi_60d'] > 15:
+                st.success("🎯 [進場訊號]：價格低於均線且預期報酬高，建議分批布局。")
+            elif metrics['bias_rate'] > 10:
+                st.warning("⚠️ [冷卻訊號]：價格乖離過大（超買），建議暫緩進場。")
+            else:
+                st.info("ℹ️ [觀望訊號]：市場趨勢平穩，保持觀察。")
 
         if st.button("💾 存入卡牌庫"):
             new_data = {"名稱": str(res['name']), "成本": float(res['cost']), "ROI": f"{roi:.2f}%"}
@@ -122,25 +135,3 @@ elif page == "卡牌庫":
         st.dataframe(df[['名稱', '成本', 'ROI']], use_container_width=True, hide_index=True)
     else:
         st.info("牌庫目前無資料。")
-      # app.py - 頁面邏輯中的顯示區塊
-if res:
-    # 計算進階指標
-    metrics = calculate_investment_metrics(res['data_PSA'], cost)
-    
-    if metrics:
-        st.subheader("📈 60天投資策略面板")
-        col1, col2, col3, col4 = st.columns(4)
-        
-        col1.metric("60日均價 (SMA60)", f"NT${metrics['sma60']:,.0f}")
-        col2.metric("乖離率", f"{metrics['bias_rate']:.2f}%", 
-                    delta_color="inverse" if metrics['bias_rate'] < 0 else "normal")
-        col3.metric("60天預測價", f"NT${metrics['projected_60d']:,.0f}")
-        col4.metric("預期 ROI", f"{metrics['roi_60d']:.2f}%")
-
-        # 決策邏輯視覺化
-        if metrics['bias_rate'] < -5 and metrics['roi_60d'] > 15:
-            st.success("🎯 [進場訊號]：當前價格低於均線且預期報酬高，建議分批布局。")
-        elif metrics['bias_rate'] > 10:
-            st.warning("⚠️ [冷卻訊號]：當前價格乖離過大（超買），建議暫緩進場。")
-        else:
-            st.info("ℹ️ [觀望訊號]：市場趨勢平穩，保持觀察。")
