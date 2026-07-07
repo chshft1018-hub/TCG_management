@@ -3,6 +3,9 @@ import aiohttp
 import pandas as pd
 import plotly.express as px
 import requests
+from scraper import get_chart_data, analyze_data, get_product_name
+from scraper import create_professional_chart, get_psa_pop_from_cert_url
+from scraper import calculate_investment_metrics, create_combined_chart
 from bs4 import BeautifulSoup
 import plotly.graph_objects as go
 import numpy as np
