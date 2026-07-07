@@ -43,13 +43,25 @@ if 'last_analysis' not in st.session_state:
 with st.sidebar:
     st.header("功能")
     page = st.radio("請選擇功能", ["卡牌分析", "卡牌庫"])
-    st.header("參數設定")
-    search_input = st.text_input("輸入關鍵字 (例如: M2a 223/193)")
-    if search_input:
-        st.markdown(f"[點此前往搜尋結果頁](https://snkrdunk.com/search?keywords={search_input.replace(' ', '+').replace('/', '%2F')})")
-    product_id = st.text_input("商品 ID", value='826553')
-    cost = st.number_input("持有成本 (NT$)", value=15000.0)
-    analyze_btn = st.button("立即分析")
+    
+    st.markdown("---")
+    st.header("PSA POP 查詢")
+    cert_url = st.text_input("輸入 PSA 驗證網址")
+    if st.button("查詢 PSA 數據"):
+        with st.spinner("解析中..."):
+            st.session_state['psa_data'] = get_psa_pop_from_cert_url(cert_url)
+            
+    st.markdown("---")
+    # ... (原有參數設定) ...
+if page == "卡牌分析":
+    # ... (原有分析圖表) ...
+    
+    # 顯示查詢結果
+    if 'psa_data' in st.session_state and isinstance(st.session_state['psa_data'], dict):
+        d = st.session_state['psa_data']
+        col_p1, col_p2 = st.columns(2)
+        col_p1.metric("總鑑定數量", d['total'])
+        col_p2.metric("高於此卡數量", d['higher'])
 
 # --- 頁面邏輯 ---
 if page == "卡牌分析":
