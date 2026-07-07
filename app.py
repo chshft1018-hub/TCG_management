@@ -5,7 +5,7 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from scraper import (get_chart_data, analyze_data, get_product_name, 
                      create_professional_chart, get_psa_pop_from_cert_url,
-                     calculate_investment_metrics)
+                     calculate_investment_metrics, create_combined_chart)
 
 # --- 工具函式 ---
 def get_gspread_client():
@@ -121,11 +121,13 @@ if page == "卡牌分析":
             st.session_state['card_library'].append(new_data)
             update_google_sheet(st.session_state['card_library'])
             st.success("已同步至 Google Sheets")
-
-        # 圖表區域
-st.subheader("📊 價格趨勢疊加分析")
-combined_chart = create_combined_chart(res['data_A'], res['data_PSA'], "裸卡 vs PSA10 市場走勢比較")
-st.plotly_chart(combined_chart, use_container_width=True)
+# 圖表區域
+res = st.session_state.get('last_analysis')
+    if res:
+        st.subheader(f"卡牌名稱：{res['name']}")
+        st.subheader("📊 價格趨勢疊加分析")
+        combined_chart = create_combined_chart(res['data_A'], res['data_PSA'], "裸卡 vs PSA10 市場走勢比較")
+        st.plotly_chart(combined_chart, use_container_width=True)
 
 elif page == "卡牌庫":
     st.title("📂 卡牌庫")
