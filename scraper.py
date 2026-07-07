@@ -5,6 +5,9 @@ import plotly.express as px
 import requests
 from bs4 import BeautifulSoup
 import plotly.graph_objects as go
+from bs4 import BeautifulSoup
+import requests
+
 
 async def get_chart_data(product_id, option_id):
     url = f"https://snkrdunk.com/v1/apparels/{product_id}/sales-chart/used?range=all&salesChartOptionId={option_id}"
@@ -107,20 +110,19 @@ def get_psa_pop_from_cert_url(cert_url):
     try:
         response = requests.get(cert_url, headers=headers, timeout=10)
         soup = BeautifulSoup(response.text, 'html.parser')
-        
-        # 定位 Pop 數據的區塊
-        # PSA 驗證頁面上，通常會用 <span class="pop-count"> 或類似的標籤標示
-        # 由於網頁結構可能會有變化，我們使用 find 找尋特定的 text 關鍵字
         pop_data = {}
-        
-        # 搜尋 "Total Population" 和 "Pop Higher" 這些標籤
+        # 尋找 PSA 頁面上的標籤
         labels = soup.find_all('div', class_='label')
         for label in labels:
             if "Total Population" in label.text:
                 pop_data['total'] = label.find_next_sibling('div').text.strip()
             if "Pop Higher" in label.text:
                 pop_data['higher'] = label.find_next_sibling('div').text.strip()
-        
-        return pop_data if pop_data else "未找到 POP 數據"
+        return pop_data if pop_data else "未找到數據"
     except Exception as e:
         return f"爬取失敗: {str(e)}"
+
+# 新增：搜尋功能直接回傳 PSA 連結 (若無法自動化，則由使用者確認)
+def get_psa_search_link(card_name):
+    # 此處邏輯為：搜尋卡名，並根據 PSA 官網結構組合連結
+    return f"https://www.psacard.com/pop/tcg-cards/2026/{card_name.replace(' ', '-').lower()}"
