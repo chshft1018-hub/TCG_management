@@ -138,26 +138,32 @@ def calculate_investment_metrics(json_data, cost_twd, rate=0.20):
     df = pd.DataFrame(json_data['points'], columns=['timestamp', 'price_jpy'])
     df['price_twd'] = df['price_jpy'] * rate
     
-    # 1. 取對數：避免負數與極端震盪
-    df['log_price'] = np.log(df['price_twd'])
+    # 擴大到 180 天的數據進行訓練
+    now = pd.Timestamp.now()
+    days_180 = (now - pd.Timedelta(days=180)).timestamp() * 1000
+    df_180d = df[df['timestamp'] >= days_180].copy()
     
+    if len(df_180d) < 30: # 數據量太少則不進行預測
+        return None
+
+    # 1. 計算均值 (維持 SMA60，作為短期支撐參考)
     recent_60d = df.tail(60)
     sma60 = recent_60d['price_twd'].mean()
     latest = df.iloc[-1]['price_twd']
     
-    # 2. 對數回歸
-    X = np.arange(len(recent_60d)).reshape(-1, 1)
-    y = recent_60d['log_price'].values
+    # 2. 對數回歸 (使用 180 天數據進行擬合，訓練趨勢)
+    df_180d['log_price'] = np.log(df_180d['price_twd'])
+    X = np.arange(len(df_180d)).reshape(-1, 1)
+    y = df_180d['log_price'].values
     
-    # 使用線性回歸擬合對數空間
     model = np.polyfit(X.flatten(), y, 1)
-    slope = model[0]
     
-    # 3. 預測未來 (取指數回來)
-    projected_log_price = model[0] * (len(recent_60d) + 60) + model[1]
+    # 3. 預測未來 60 天 (在 180 天基礎上外推 60 天)
+    future_index = len(df_180d) + 60
+    projected_log_price = model[0] * future_index + model[1]
     projected_60d = np.exp(projected_log_price)
     
-    # 乖離率與 ROI
+    # 4. 乖離率與 ROI
     bias_rate = ((latest - sma60) / sma60) * 100
     roi_60d = ((projected_60d - cost_twd) / cost_twd) * 100
     
