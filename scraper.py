@@ -5,7 +5,6 @@ import plotly.express as px
 import requests
 from bs4 import BeautifulSoup
 import plotly.graph_objects as go
-import requests
 
 async def get_chart_data(product_id, option_id):
     url = f"https://snkrdunk.com/v1/apparels/{product_id}/sales-chart/used?range=all&salesChartOptionId={option_id}"
@@ -103,17 +102,25 @@ def create_professional_chart(json_data, title, rate=0.20):
     )
     return fig
 
-def get_psa_pop_by_cert(cert_number, token): # 加入 token 參數
+def get_psa_pop_from_cert_url(cert_url):
+    headers = {"User-Agent": "Mozilla/5.0"}
     try:
-        url = f"https://api.psacard.com/publicapi/cert/GetByCertNumber/{cert_number}"
-        headers = {
-            "authorization": f"bearer {token}",
-            "Accept": "application/json"
-        }
-        response = requests.get(url, headers=headers, timeout=10)
-        if response.status_code == 200:
-            return response.json()
-        else:
-            return f"Status {response.status_code}"
+        response = requests.get(cert_url, headers=headers, timeout=10)
+        soup = BeautifulSoup(response.text, 'html.parser')
+        
+        # 定位 Pop 數據的區塊
+        # PSA 驗證頁面上，通常會用 <span class="pop-count"> 或類似的標籤標示
+        # 由於網頁結構可能會有變化，我們使用 find 找尋特定的 text 關鍵字
+        pop_data = {}
+        
+        # 搜尋 "Total Population" 和 "Pop Higher" 這些標籤
+        labels = soup.find_all('div', class_='label')
+        for label in labels:
+            if "Total Population" in label.text:
+                pop_data['total'] = label.find_next_sibling('div').text.strip()
+            if "Pop Higher" in label.text:
+                pop_data['higher'] = label.find_next_sibling('div').text.strip()
+        
+        return pop_data if pop_data else "未找到 POP 數據"
     except Exception as e:
-        return f"Exception: {str(e)}"
+        return f"爬取失敗: {str(e)}"
