@@ -5,7 +5,7 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from scraper import get_chart_data, analyze_data, get_product_name, create_professional_chart
 from scraper import (get_chart_data, analyze_data, get_product_name, 
-                     create_professional_chart, get_psa_pop_by_cert)
+                     create_professional_chart, get_psa_pop_from_cert_url)
 # --- Google Sheets 工具函式 ---
 def get_gspread_client():
     scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
@@ -103,19 +103,18 @@ elif page == "卡牌庫":
     else:
         st.info("牌庫目前無資料。")
 
-# 在 app.py 的卡牌分析區塊中
-cert_input = st.sidebar.text_input("輸入 PSA 憑證編號 (Cert Number)")
+# app.py 匯入區塊
 
-# app.py
-cert_url = st.sidebar.text_input("輸入 PSA 憑證網址")
 
-if st.sidebar.button("查詢該卡片 POP 數據"):
-    with st.spinner("正在解析 PSA 頁面..."):
+# 在「卡牌分析」頁面的邏輯中加入：
+st.subheader("PSA POP 數據查詢")
+cert_url = st.text_input("輸入 PSA 驗證網址 (例如: https://www.psacard.com/cert/...)")
+
+if st.button("取得 POP 數據"):
+    with st.spinner("解析中..."):
         data = get_psa_pop_from_cert_url(cert_url)
         if isinstance(data, dict):
-            st.success("查詢成功！")
-            cols = st.columns(2)
-            cols[0].metric("總鑑定數量 (Total Pop)", data.get('total', 'N/A'))
-            cols[1].metric("高於此卡數量 (Pop Higher)", data.get('higher', 'N/A'))
+            st.metric("總鑑定數量 (Total Pop)", data.get('total', '0'))
+            st.metric("高於此卡數量 (Pop Higher)", data.get('higher', '0'))
         else:
-            st.error(f"錯誤: {data}")
+            st.error(data)
