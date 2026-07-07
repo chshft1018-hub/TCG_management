@@ -138,39 +138,37 @@ def calculate_investment_metrics(json_data, cost_twd, rate=0.20):
     df = pd.DataFrame(json_data['points'], columns=['timestamp', 'price_jpy'])
     df['price_twd'] = df['price_jpy'] * rate
     
-    # 擴大到 180 天的數據進行訓練
+    # --- 動態回退邏輯 ---
     now = pd.Timestamp.now()
-    days_180 = (now - pd.Timedelta(days=180)).timestamp() * 1000
-    df_180d = df[df['timestamp'] >= days_180].copy()
+    # 優先嘗試 180 天，如果不足則嘗試 60 天，再不足嘗試 30 天
+    for days in [180, 60, 30]:
+        cutoff = (now - pd.Timedelta(days=days)).timestamp() * 1000
+        df_period = df[df['timestamp'] >= cutoff].copy()
+        if len(df_period) >= 20: # 若該週期內至少有 20 個數據點，則採用
+            break
     
-    if len(df_180d) < 30: # 數據量太少則不進行預測
-        return None
+    if len(df_period) < 20: return None # 數據真的太少則放棄計算
 
-    # 1. 計算均值 (維持 SMA60，作為短期支撐參考)
-    recent_60d = df.tail(60)
-    sma60 = recent_60d['price_twd'].mean()
-    latest = df.iloc[-1]['price_twd']
-    
-    # 2. 對數回歸 (使用 180 天數據進行擬合，訓練趨勢)
-    df_180d['log_price'] = np.log(df_180d['price_twd'])
-    X = np.arange(len(df_180d)).reshape(-1, 1)
-    y = df_180d['log_price'].values
-    
+    # 進行對數回歸
+    df_period['log_price'] = np.log(df_period['price_twd'])
+    X = np.arange(len(df_period)).reshape(-1, 1)
+    y = df_period['log_price'].values
     model = np.polyfit(X.flatten(), y, 1)
     
-    # 3. 預測未來 60 天 (在 180 天基礎上外推 60 天)
-    future_index = len(df_180d) + 60
+    # 預測未來 60 天
+    future_index = len(df_period) + 60
     projected_log_price = model[0] * future_index + model[1]
     projected_60d = np.exp(projected_log_price)
     
-    # 4. 乖離率與 ROI
-    bias_rate = ((latest - sma60) / sma60) * 100
-    roi_60d = ((projected_60d - cost_twd) / cost_twd) * 100
+    # 乖離率 (使用現有數據的 SMA 計算)
+    latest = df.iloc[-1]['price_twd']
+    sma = df_period['price_twd'].mean() 
+    bias_rate = ((latest - sma) / sma) * 100
     
     return {
         "latest": latest,
-        "sma60": sma60,
+        "sma_period": sma, # 改用動態計算的均線
         "bias_rate": bias_rate,
         "projected_60d": projected_60d,
-        "roi_60d": roi_60d
+        "roi_60d": ((projected_60d - cost_twd) / cost_twd) * 100
     }
