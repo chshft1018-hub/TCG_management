@@ -123,9 +123,9 @@ if page == "卡牌分析":
             st.success("已同步至 Google Sheets")
 
         # 圖表區域
-        c1, c2 = st.columns(2)
-        c1.plotly_chart(create_professional_chart(res['data_A'], "裸卡(A品) 價格走勢"), use_container_width=True)
-        c2.plotly_chart(create_professional_chart(res['data_PSA'], "鑑定卡(PSA10) 價格走勢"), use_container_width=True)
+st.subheader("📊 價格趨勢疊加分析")
+combined_chart = create_combined_chart(res['data_A'], res['data_PSA'], "裸卡 vs PSA10 市場走勢比較")
+st.plotly_chart(combined_chart, use_container_width=True)
 
 elif page == "卡牌庫":
     st.title("📂 卡牌庫")
