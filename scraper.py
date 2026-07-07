@@ -103,21 +103,19 @@ def create_professional_chart(json_data, title, rate=0.20):
     )
     return fig
 
+# --- 在 scraper.py 中加入 ---
 def get_psa_pop_by_cert(cert_number):
-    # 讀取 secret 中的 token
-    token = st.secrets["psa"]["api_token"]
-    
-    url = f"https://api.psacard.com/publicapi/cert/GetByCertNumber/{cert_number}"
-    headers = {
-        "Authorization": f"bearer {token}",
-        "Content-Type": "application/json"
-    }
-    
+    # 這裡確保你可以抓取到 st.secrets
     try:
-        response = requests.get(url, headers=headers)
+        token = st.secrets["psa"]["api_token"]
+        url = f"https://api.psacard.com/publicapi/cert/GetByCertNumber/{cert_number}"
+        headers = {
+            "Authorization": f"bearer {token}",
+            "Content-Type": "application/json"
+        }
+        response = requests.get(url, headers=headers, timeout=10)
         if response.status_code == 200:
-            return response.json() # 這會包含該憑證的詳細資料與 POP 數據
-        else:
-            return None
-    except Exception as e:
+            return response.json()
+        return None
+    except Exception:
         return None
