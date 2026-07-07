@@ -103,26 +103,17 @@ def create_professional_chart(json_data, title, rate=0.20):
     )
     return fig
 
-def get_psa_pop_by_cert(cert_number):
+def get_psa_pop_by_cert(cert_number, token): # 加入 token 參數
     try:
-        # 請確保這行順利執行，如果失敗會觸發下方 except
-        token = st.secrets["psa"]["api_token"]
-        
         url = f"https://api.psacard.com/publicapi/cert/GetByCertNumber/{cert_number}"
-        
-        # 依照官方文件範例：使用 "authorization" 作為 key
         headers = {
             "authorization": f"bearer {token}",
             "Accept": "application/json"
         }
-        
         response = requests.get(url, headers=headers, timeout=10)
-        
         if response.status_code == 200:
             return response.json()
         else:
-            # 回傳狀態碼與內容，協助排查
-            return f"Status {response.status_code}: {response.text}"
-            
+            return f"Status {response.status_code}"
     except Exception as e:
         return f"Exception: {str(e)}"
