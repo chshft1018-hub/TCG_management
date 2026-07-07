@@ -7,7 +7,7 @@ from scraper import (get_chart_data, analyze_data, get_product_name,
                      create_professional_chart, get_psa_pop_from_cert_url,
                      calculate_investment_metrics, create_combined_chart)
 
-# --- 工具函式 ---
+# --- Google Sheets 工具函式 ---
 def get_gspread_client():
     scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
     creds_dict = dict(st.secrets["gcp"])
@@ -42,7 +42,6 @@ if 'last_analysis' not in st.session_state: st.session_state['last_analysis'] = 
 with st.sidebar:
     st.header("功能")
     page = st.radio("請選擇功能", ["卡牌分析", "卡牌庫"])
-    
     st.markdown("---")
     st.header("搜尋與設定")
     search_input = st.text_input("輸入關鍵字 (例如: M2a 223/193)")
@@ -61,7 +60,7 @@ with st.sidebar:
         with st.spinner("解析中..."):
             st.session_state['psa_data'] = get_psa_pop_from_cert_url(cert_url)
 
-# --- 頁面邏輯 ---
+# --- 主要頁面邏輯 ---
 if page == "卡牌分析":
     st.title("📊 卡牌查價")
     
@@ -83,7 +82,7 @@ if page == "卡牌分析":
     if res:
         st.subheader(f"卡牌名稱：{res['name']}")
         
-        # PSA 數據顯示
+        # PSA 結果顯示
         if 'psa_data' in st.session_state and isinstance(st.session_state['psa_data'], dict):
             d = st.session_state['psa_data']
             cp1, cp2 = st.columns(2)
@@ -104,7 +103,8 @@ if page == "卡牌分析":
         if metrics:
             st.subheader("📈 60天投資策略面板")
             col1, col2, col3, col4 = st.columns(4)
-            col1.metric("60日均價 (SMA60)", f"NT${metrics['sma60']:,.0f}")
+            # 使用修正後的 sma_period Key
+            col1.metric("60日均價 (SMA)", f"NT${metrics['sma_period']:,.0f}")
             col2.metric("乖離率", f"{metrics['bias_rate']:.2f}%", delta_color="inverse" if metrics['bias_rate'] < 0 else "normal")
             col3.metric("60天預測價", f"NT${metrics['projected_60d']:,.0f}")
             col4.metric("預期 ROI", f"{metrics['roi_60d']:.2f}%")
@@ -116,18 +116,16 @@ if page == "卡牌分析":
             else:
                 st.info("ℹ️ [觀望訊號]：市場趨勢平穩，保持觀察。")
 
+        # 疊圖與存庫功能
+        st.subheader("📊 價格趨勢疊加分析")
+        combined_chart = create_combined_chart(res['data_A'], res['data_PSA'], "裸卡 vs PSA10 市場走勢比較")
+        st.plotly_chart(combined_chart, use_container_width=True)
+
         if st.button("💾 存入卡牌庫"):
             new_data = {"名稱": str(res['name']), "成本": float(res['cost']), "ROI": f"{roi:.2f}%"}
             st.session_state['card_library'].append(new_data)
             update_google_sheet(st.session_state['card_library'])
             st.success("已同步至 Google Sheets")
-# 圖表區域
-res = st.session_state.get('last_analysis')
-    if res:
-        st.subheader(f"卡牌名稱：{res['name']}")
-        st.subheader("📊 價格趨勢疊加分析")
-        combined_chart = create_combined_chart(res['data_A'], res['data_PSA'], "裸卡 vs PSA10 市場走勢比較")
-        st.plotly_chart(combined_chart, use_container_width=True)
 
 elif page == "卡牌庫":
     st.title("📂 卡牌庫")
