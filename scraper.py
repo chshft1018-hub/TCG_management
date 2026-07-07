@@ -3,13 +3,12 @@ import aiohttp
 import pandas as pd
 import plotly.express as px
 import requests
-from scraper import get_chart_data, analyze_data, get_product_name
-from scraper import create_professional_chart, get_psa_pop_from_cert_url
-from scraper import calculate_investment_metrics, create_combined_chart
 from bs4 import BeautifulSoup
 import plotly.graph_objects as go
 import numpy as np
 import re
+
+# --- 資料獲取與處理 ---
 
 async def get_chart_data(product_id, option_id):
     url = f"https://snkrdunk.com/v1/apparels/{product_id}/sales-chart/used?range=all&salesChartOptionId={option_id}"
@@ -44,6 +43,18 @@ def analyze_data(json_data, cost_twd, rate=0.20):
         "roi": ((latest - cost_twd) / cost_twd * 100)
     }
 
+# --- 圖表繪製 ---
+
+def create_professional_chart(json_data, title, rate=0.20):
+    if not json_data or 'points' not in json_data: return None
+    df = pd.DataFrame(json_data['points'], columns=['timestamp', 'price_jpy'])
+    df['date'] = pd.to_datetime(df['timestamp'], unit='ms')
+    df['price'] = df['price_jpy'] * rate
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=df['date'], y=df['price'], fill='tozeroy', mode='lines', line=dict(color='#2962FF', width=3)))
+    fig.update_layout(title=title, plot_bgcolor='white', xaxis_title="日期", yaxis_title="價格 (NT$)", tickformat=",d")
+    return fig
+
 def create_combined_chart(data_A, data_PSA, title):
     fig = go.Figure()
     if data_A and 'points' in data_A:
@@ -56,14 +67,10 @@ def create_combined_chart(data_A, data_PSA, title):
         df_PSA['date'] = pd.to_datetime(df_PSA['timestamp'], unit='ms')
         df_PSA['price'] = df_PSA['price_jpy'] * 0.20
         fig.add_trace(go.Scatter(x=df_PSA['date'], y=df_PSA['price'], name='鑑定卡 (PSA10)', line=dict(color='#2962FF', width=3)))
-    
-    fig.update_layout(
-        title=title, plot_bgcolor='white', paper_bgcolor='white',
-        xaxis=dict(showgrid=True, gridcolor='#E0E0E0', title="日期"),
-        yaxis=dict(showgrid=True, gridcolor='#E0E0E0', title="價格 (NT$)", tickformat=",d"),
-        hovermode="x unified"
-    )
+    fig.update_layout(title=title, plot_bgcolor='white', hovermode="x unified", yaxis_title="價格 (NT$)", tickformat=",d")
     return fig
+
+# --- 工具與分析 ---
 
 def get_psa_pop_from_cert_url(cert_url):
     headers = {"User-Agent": "Mozilla/5.0"}
@@ -82,12 +89,11 @@ def get_psa_pop_from_cert_url(cert_url):
 
 def calculate_investment_metrics(json_data, cost_twd, rate=0.20):
     if not json_data or 'points' not in json_data: return None
-    
     df = pd.DataFrame(json_data['points'], columns=['timestamp', 'price_jpy'])
     df['price_twd'] = df['price_jpy'] * rate
-    
-    # 動態回退邏輯 (180 -> 60 -> 30)
     now = pd.Timestamp.now()
+    
+    # 動態回退邏輯
     for days in [180, 60, 30]:
         cutoff = (now - pd.Timedelta(days=days)).timestamp() * 1000
         df_period = df[df['timestamp'] >= cutoff].copy()
@@ -101,11 +107,9 @@ def calculate_investment_metrics(json_data, cost_twd, rate=0.20):
     y = df_period['log_price'].values
     model = np.polyfit(X.flatten(), y, 1)
     
-    # 預測未來 60 天
     projected_log_price = model[0] * (len(df_period) + 60) + model[1]
     projected_60d = np.exp(projected_log_price)
     
-    # 回傳一致的 Key 名稱
     return {
         "latest": df.iloc[-1]['price_twd'],
         "sma_period": df_period['price_twd'].mean(),
