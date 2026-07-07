@@ -122,3 +122,25 @@ elif page == "卡牌庫":
         st.dataframe(df[['名稱', '成本', 'ROI']], use_container_width=True, hide_index=True)
     else:
         st.info("牌庫目前無資料。")
+      # app.py - 頁面邏輯中的顯示區塊
+if res:
+    # 計算進階指標
+    metrics = calculate_investment_metrics(res['data_PSA'], cost)
+    
+    if metrics:
+        st.subheader("📈 60天投資策略面板")
+        col1, col2, col3, col4 = st.columns(4)
+        
+        col1.metric("60日均價 (SMA60)", f"NT${metrics['sma60']:,.0f}")
+        col2.metric("乖離率", f"{metrics['bias_rate']:.2f}%", 
+                    delta_color="inverse" if metrics['bias_rate'] < 0 else "normal")
+        col3.metric("60天預測價", f"NT${metrics['projected_60d']:,.0f}")
+        col4.metric("預期 ROI", f"{metrics['roi_60d']:.2f}%")
+
+        # 決策邏輯視覺化
+        if metrics['bias_rate'] < -5 and metrics['roi_60d'] > 15:
+            st.success("🎯 [進場訊號]：當前價格低於均線且預期報酬高，建議分批布局。")
+        elif metrics['bias_rate'] > 10:
+            st.warning("⚠️ [冷卻訊號]：當前價格乖離過大（超買），建議暫緩進場。")
+        else:
+            st.info("ℹ️ [觀望訊號]：市場趨勢平穩，保持觀察。")
