@@ -109,8 +109,18 @@ if page == "卡牌分析":
         fig = create_combined_chart(res['data_A'], res['data_PSA'], "走勢比較")
         st.plotly_chart(fig, use_container_width=True)
 
-        if st.button("💾 存入卡牌庫"):
-            new_data = {"名稱": str(res['name']), "成本": float(res['cost']), "ROI": f"{roi:.2f}%"}
+if st.button("💾 存入卡牌庫"):
+            new_data = {
+                "名稱": str(res['name']), 
+                "成本": float(res['cost']), 
+                "ROI": f"{roi:.2f}%"
+            }
+            # 更新 Session State
             st.session_state['card_library'].append(new_data)
+            # 寫入 Google Sheets
+            update_google_sheet(st.session_state['card_library'])
+            # 【關鍵】強制重新讀取一次，確保資料一致
+            st.session_state['card_library'] = load_google_sheet()
+            st.success("已同步至 Google Sheets 並更新卡牌庫")
             update_google_sheet(st.session_state['card_library'])
             st.success("已同步至 Sheets")
