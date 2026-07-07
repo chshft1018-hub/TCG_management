@@ -7,6 +7,7 @@ from bs4 import BeautifulSoup
 import plotly.graph_objects as go
 from bs4 import BeautifulSoup
 import requests
+import numpy as np
 
 
 async def get_chart_data(product_id, option_id):
@@ -130,3 +131,32 @@ def get_psa_pop_from_cert_url(cert_url):
         return data if data['total'] != "0" else "未偵測到數據，請確認網址是否正確"
     except Exception as e:
         return f"爬取失敗: {str(e)}"
+
+def calculate_investment_metrics(json_data, cost_twd, rate=0.20):
+    if not json_data or 'points' not in json_data: return None
+    
+    df = pd.DataFrame(json_data['points'], columns=['timestamp', 'price_jpy'])
+    df['price_twd'] = df['price_jpy'] * rate
+    
+    # 計算 60 天平均價 (SMA60)
+    # 假設點位為日資料，60 天即為最後 60 個點
+    recent_60d = df.tail(60)
+    sma60 = recent_60d['price_twd'].mean()
+    latest = df.iloc[-1]['price_twd']
+    
+    # 預測價格 (簡單線性迴歸斜率)
+    X = np.arange(len(recent_60d)).reshape(-1, 1)
+    y = recent_60d['price_twd'].values
+    slope = np.polyfit(X.flatten(), y, 1)[0]
+    projected_60d = latest + (slope * 60)
+    
+    # 乖離率 (Bias Rate)
+    bias_rate = ((latest - sma60) / sma60) * 100
+    
+    return {
+        "latest": latest,
+        "sma60": sma60,
+        "bias_rate": bias_rate,
+        "projected_60d": projected_60d,
+        "roi_60d": ((projected_60d - cost_twd) / cost_twd) * 100
+    }
