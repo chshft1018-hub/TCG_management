@@ -109,4 +109,71 @@ elif page == "投資分析":
                 text=[f"NT${p:,.0f}" if d in [0, 15, 60] else "" for d, p in zip(pred_df['Days'], pred_df['Predicted_Price'])],
                 textposition="top center",
                 line=dict(color='#9C27B0', width=3, shape='spline'),
-                marker=dict(size=8, color='#9
+                marker=dict(size=8, color='#9C27B0'),
+                # 強制指定 Hover 提示框顯示完整的千分位數字，不縮寫
+                hovertemplate="預測價格: NT$%{y:,.0f}<extra></extra>" 
+            ))
+            fig_pred.update_layout(
+                xaxis_title="未來天數", 
+                # 這裡加入 yaxis 字典的 tickformat 讓 Y 軸也強制顯示完整數字
+                yaxis=dict(title="預測價格 (NT$)", tickformat=",d"), 
+                plot_bgcolor='white', hovermode="x unified", height=400,
+                xaxis=dict(tickmode='array', tickvals=[0, 5, 10, 15, 30, 45, 60], ticktext=['現在', '5天', '10天', '15天', '30天', '45天', '60天'])
+            )
+            st.plotly_chart(fig_pred, use_container_width=True)
+
+            # --- 最佳出手時機分析 ---
+            st.markdown("### ⏱️ 最佳操作時機判定")
+            
+            best_sell_day = max(preds, key=preds.get)
+            best_buy_day = min(preds, key=preds.get)
+            
+            if rsi_val >= 60:
+                st.error(f"**🔴 賣出策略分析 (高檔調節)**\n\n根據動能過衝模型，預期價格的最高峰可能落在 **第 {best_sell_day} 天** (預估價: NT${preds[best_sell_day]:,.0f})。若您持有現貨，建議在此時間區間內分批獲利了結，以規避後續的均值回落風險。")
+            elif rsi_val <= 40:
+                st.success(f"**🟢 買進策略分析 (低檔佈局)**\n\n根據均值回歸模型，預期價格的最低谷可能落在 **第 {best_buy_day} 天** (預估價: NT${preds[best_buy_day]:,.0f})。市場拋售情緒即將觸底，這將是建立底倉、逢低買進的最佳黃金窗口。")
+            else:
+                st.info(f"**🟡 中性觀望分析**\n\n目前市場動能平穩。圖表顯示價格波動區間狹窄（預估最高 NT${max(preds.values()):,.0f} / 最低 NT${min(preds.values()):,.0f}），此時進出場的套利空間有限，建議持倉觀望。")
+            
+            st.markdown("---")
+            st.markdown("#### 長期預測概覽 (60天後)")
+            p1, p2 = st.columns(2)
+            p1.metric("60天後預測價", f"NT${metrics['projected_60d']:,.0f}")
+            p2.metric("預期 ROI", f"{metrics['roi_60d']:.2f}%")
+            
+        else:
+            st.warning("數據樣本數不足，無法產生量化預測指標。")
+    
+    st.markdown("---")
+    if st.button("🔄 計算整體組合績效"):
+        df = pd.DataFrame(load_google_sheet())
+        if not df.empty:
+            st.metric("總持有資產成本", f"NT${df['成本'].sum():,.0f}")
+            st.dataframe(df, use_container_width=True)
+        else: 
+            st.warning("請先在卡牌分析頁面存入卡牌。")
+
+# 4. 卡牌庫
+elif page == "卡牌庫":
+    st.title("📂 卡牌庫")
+    df = pd.DataFrame(load_google_sheet())
+    if not df.empty: st.dataframe(df, use_container_width=True)
+    else: st.info("無庫存資料")
+
+# 5. PSA 查詢
+elif page == "PSA 查詢":
+    st.title("🛡️ PSA POP 查詢")
+    with st.container(border=True):
+        cert_input = st.text_input("輸入 PSA 網址或編號")
+        if st.button("查詢 PSA 數據"):
+            with st.spinner("解析中..."):
+                url = cert_input if cert_input.startswith("http") else f"https://www.psacard.com/cert/{cert_input}/psa"
+                st.session_state['psa_data'] = get_psa_pop_from_cert_url(url)
+    if st.session_state.get('psa_data'):
+        if isinstance(st.session_state['psa_data'], dict):
+            st.success("✅ 查詢成功！")
+            p1, p2 = st.columns(2)
+            p1.metric("總鑑定數量 (Total Pop)", st.session_state['psa_data'].get('total', '0'))
+            p2.metric("高於此卡數量 (Pop Higher)", st.session_state['psa_data'].get('higher', '0'))
+        else:
+            st.error(st.session_state['psa_data'])
