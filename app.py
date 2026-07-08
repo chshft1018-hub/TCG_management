@@ -2,6 +2,7 @@ import streamlit as st
 import asyncio
 import pandas as pd
 import plotly.graph_objects as go
+from PIL import Image, ImageDraw # 引入影像處理模組
 from scraper import (get_chart_data, analyze_data, get_product_name, 
                      create_professional_chart, get_psa_pop_from_cert_url,
                      calculate_investment_metrics, create_combined_chart)
@@ -19,7 +20,7 @@ def navigate_to(page_name):
 
 with st.sidebar:
     st.header("功能導航")
-    page = st.radio( "功能區", ["首頁", "卡牌分析", "投資分析", "PSA 查詢", "置中檢測","卡牌庫"], key="current_page")
+    page = st.radio( "功能區", ["首頁", "卡牌分析", "投資分析", "PSA 查詢", "置中檢測", "卡牌庫"], key="current_page")
 
 # 1. 首頁
 if page == "首頁":
@@ -32,7 +33,6 @@ if page == "首頁":
     c4.button("📏 前往置中檢測", use_container_width=True, on_click=navigate_to, args=("置中檢測",))
     c5.button("📂 前往卡牌庫", use_container_width=True, on_click=navigate_to, args=("卡牌庫",))
     
-# 在 page == "首頁" 的區塊中新增：
 # 2. 卡牌分析
 elif page == "卡牌分析":
     st.title("📊 卡牌分析中心")
@@ -73,7 +73,7 @@ elif page == "卡牌分析":
         fig = create_combined_chart(res['data_A'], res['data_PSA'], "走勢比較")
         st.plotly_chart(fig, use_container_width=True)
 
-# 3. 投資分析 (升級：UI調整與Hover格式化)
+# 3. 投資分析
 elif page == "投資分析":
     st.title("📈 進階投資分析")
     
@@ -87,20 +87,14 @@ elif page == "投資分析":
             bias_rate = metrics['bias_rate']
             preds = metrics['predictions']
             
-            # 擴充為 4 個欄位，加入當前 ROI
             c1, c2, c3, c4 = st.columns(4)
             c1.metric("60日指數均價 (EMA)", f"NT${metrics['ema_60']:,.0f}")
-            
-            # 計算當前 ROI
             current_roi = ((metrics['latest'] - res['cost']) / res['cost']) * 100
             c2.metric("當前 ROI", f"{current_roi:.2f}%")
-            
             c3.metric("當前乖離率", f"{bias_rate:.2f}%")
             c4.metric("RSI (14) 市場情緒", f"{rsi_val:.1f}")
             
             st.markdown("---")
-            
-            # --- 繪製 60 天預測曲線圖 ---
             st.markdown("### 📊 未來 60 天價格走勢預測")
             
             pred_df = pd.DataFrame(list(preds.items()), columns=['Days', 'Predicted_Price'])
@@ -112,30 +106,26 @@ elif page == "投資分析":
                 textposition="top center",
                 line=dict(color='#9C27B0', width=3, shape='spline'),
                 marker=dict(size=8, color='#9C27B0'),
-                # 強制指定 Hover 提示框顯示完整的千分位數字，不縮寫
                 hovertemplate="預測價格: NT$%{y:,.0f}<extra></extra>" 
             ))
             fig_pred.update_layout(
                 xaxis_title="未來天數", 
-                # 這裡加入 yaxis 字典的 tickformat 讓 Y 軸也強制顯示完整數字
                 yaxis=dict(title="預測價格 (NT$)", tickformat=",d"), 
                 plot_bgcolor='white', hovermode="x unified", height=400,
                 xaxis=dict(tickmode='array', tickvals=[0, 5, 10, 15, 30, 45, 60], ticktext=['現在', '5天', '10天', '15天', '30天', '45天', '60天'])
             )
             st.plotly_chart(fig_pred, use_container_width=True)
 
-            # --- 最佳出手時機分析 ---
             st.markdown("### ⏱️ 最佳操作時機判定")
-            
             best_sell_day = max(preds, key=preds.get)
             best_buy_day = min(preds, key=preds.get)
             
             if rsi_val >= 60:
-                st.error(f"**🔴 賣出策略分析 (高檔調節)**\n\n根據動能過衝模型，預期價格的最高峰可能落在 **第 {best_sell_day} 天** (預估價: NT${preds[best_sell_day]:,.0f})。若您持有現貨，建議在此時間區間內分批獲利了結，以規避後續的均值回落風險。")
+                st.error(f"**🔴 賣出策略分析 (高檔調節)**\n\n根據動能過衝模型，預期價格的最高峰可能落在 **第 {best_sell_day} 天** (預估價: NT${preds[best_sell_day]:,.0f})。若您持有現貨，建議在此時間區間內分批獲利了結。")
             elif rsi_val <= 40:
-                st.success(f"**🟢 買進策略分析 (低檔佈局)**\n\n根據均值回歸模型，預期價格的最低谷可能落在 **第 {best_buy_day} 天** (預估價: NT${preds[best_buy_day]:,.0f})。市場拋售情緒即將觸底，這將是建立底倉、逢低買進的最佳黃金窗口。")
+                st.success(f"**🟢 買進策略分析 (低檔佈局)**\n\n根據均值回歸模型，預期價格的最低谷可能落在 **第 {best_buy_day} 天** (預估價: NT${preds[best_buy_day]:,.0f})。市場拋售情緒即將觸底，這將是建立底倉的最佳黃金窗口。")
             else:
-                st.info(f"**🟡 中性觀望分析**\n\n目前市場動能平穩。圖表顯示價格波動區間狹窄（預估最高 NT${max(preds.values()):,.0f} / 最低 NT${min(preds.values()):,.0f}），此時進出場的套利空間有限，建議持倉觀望。")
+                st.info(f"**🟡 中性觀望分析**\n\n目前市場動能平穩。圖表顯示價格波動區間狹窄，此時進出場的套利空間有限，建議持倉觀望。")
             
             st.markdown("---")
             st.markdown("#### 長期預測概覽 (60天後)")
@@ -179,3 +169,61 @@ elif page == "PSA 查詢":
             p2.metric("高於此卡數量 (Pop Higher)", st.session_state['psa_data'].get('higher', '0'))
         else:
             st.error(st.session_state['psa_data'])
+
+# 6. 置中檢測 (原生 Python 影像處理版)
+elif page == "置中檢測":
+    st.title("📏 卡牌置中度檢測 (Centering)")
+    st.markdown("請上傳卡牌正面影像。系統將顯示參考網格，您可以透過拉動滑桿來對齊卡牌原畫的邊界，並自動計算置中比例。**(PSA 10 標準: 正面 55/45 以內)**")
+    
+    uploaded_file = st.file_uploader("上傳卡牌圖片", type=["jpg", "jpeg", "png"])
+    
+    if uploaded_file is not None:
+        # 讀取圖片
+        img = Image.open(uploaded_file)
+        w, h = img.size
+        
+        st.markdown("### 🎛️ 調整原畫邊界")
+        st.info("請假設圖片最外框為卡牌邊緣，利用下方滑桿對齊內部「原畫像」的邊框。")
+        
+        # 建立四個滑桿讓使用者調整邊線位置
+        col_slider1, col_slider2 = st.columns(2)
+        with col_slider1:
+            left_border = st.slider("調整左側邊界", 0, w//2, int(w*0.05))
+            right_border = st.slider("調整右側邊界", w//2, w, int(w*0.95))
+        with col_slider2:
+            top_border = st.slider("調整上方邊界", 0, h//2, int(h*0.05))
+            bottom_border = st.slider("調整下方邊界", h//2, h, int(h*0.95))
+            
+        # 計算邊框與邊緣的距離 (Margin)
+        left_margin = left_border
+        right_margin = w - right_border
+        top_margin = top_border
+        bottom_margin = h - bottom_border
+        
+        # 計算比例
+        lr_ratio = (left_margin / (left_margin + right_margin) * 100) if (left_margin + right_margin) > 0 else 50
+        tb_ratio = (top_margin / (top_margin + bottom_margin) * 100) if (top_margin + bottom_margin) > 0 else 50
+        
+        # 在圖片上繪製紅線
+        img_with_lines = img.copy()
+        draw = ImageDraw.Draw(img_with_lines)
+        line_color = "red"
+        line_width = max(2, w // 200) # 根據圖片大小自動調整線條粗細
+        
+        draw.line([(left_border, 0), (left_border, h)], fill=line_color, width=line_width)
+        draw.line([(right_border, 0), (right_border, h)], fill=line_color, width=line_width)
+        draw.line([(0, top_border), (w, top_border)], fill=line_color, width=line_width)
+        draw.line([(0, bottom_border), (w, bottom_border)], fill=line_color, width=line_width)
+        
+        st.image(img_with_lines, use_container_width=True)
+        
+        # 顯示檢測結果
+        st.markdown("### 📊 檢測結果")
+        res_col1, res_col2 = st.columns(2)
+        res_col1.metric("左右置中比例 (L/R)", f"{lr_ratio:.1f} / {100-lr_ratio:.1f}")
+        res_col2.metric("上下置中比例 (T/B)", f"{tb_ratio:.1f} / {100-tb_ratio:.1f}")
+        
+        if (46.5 <= lr_ratio <= 54.5) and (46.5 <= tb_ratio <= 54.5):
+            st.success("✅ **判定：符合 PSA 10 置中標準 **")
+        else:
+            st.error("⚠️ **判定：偏離 PSA 10 標準 **")
