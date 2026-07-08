@@ -41,8 +41,8 @@ with st.expander("🔍 搜尋與分析設定", expanded=True):
             analyze_btn = st.button("🚀 執行卡牌分析")
             
     # PSA 查詢區塊
-      with st.expander("🛡️ PSA POP 查詢"):
-        cert_input = st.text_input("輸入 PSA 網址或編號")
+        with st.expander("🛡️ PSA POP 查詢"):
+         cert_input = st.text_input("輸入 PSA 網址或編號")
         if st.button("查詢數據"):
             url = cert_input if cert_input.startswith("http") else f"https://www.psacard.com/cert/{cert_input}/psa"
             st.session_state['psa_data'] = get_psa_pop_from_cert_url(url)
