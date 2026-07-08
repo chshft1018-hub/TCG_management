@@ -30,7 +30,7 @@ with st.expander("🔍 搜尋與分析設定", expanded=True):
         with col2:
             cost = st.number_input("持有成本 (NT$)", value=10000.0)
             analyze_btn = st.button("🚀 執行卡牌分析") # 變數在這裡被賦值
-    if search_input:
+        if search_input:
         # 將搜尋處理與 URL 組裝分開，避免 F-string 括號地獄
         query = search_input.replace(' ', '+').replace('/', '%2F')
         search_url = f"https://snkrdunk.com/search?keywords={query}"
