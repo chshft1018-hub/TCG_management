@@ -32,8 +32,8 @@ with st.expander("🔍 搜尋與分析設定", expanded=True):
             analyze_btn = st.button("🚀 執行卡牌分析") # 變數在這裡被賦值
         if search_input:
         # 將搜尋處理與 URL 組裝分開，避免 F-string 括號地獄
-        query = search_input.replace(' ', '+').replace('/', '%2F')
-        search_url = f"https://snkrdunk.com/search?keywords={query}"
+         query = search_input.replace(' ', '+').replace('/', '%2F')
+         search_url = f"https://snkrdunk.com/search?keywords={query}"
         # 這裡的括號現在完全對稱了
         st.markdown(f"[前往 SNKRDUNK 搜尋]({search_url})")
         with col2:
