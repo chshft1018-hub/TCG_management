@@ -22,11 +22,14 @@ if page == "卡牌分析":
     st.title("📊 卡牌分析中心")
     analyze_btn = False
     # 將搜尋與設定移至中間區塊
-    with st.expander("🔍 搜尋與分析設定", expanded=True):
+with st.expander("🔍 搜尋與分析設定", expanded=True):
         col1, col2 = st.columns(2)
         with col1:
             product_id = st.text_input("商品 ID", value='826553')
-            search_input = st.text_input("輸入關鍵字 (例如: M2a 223/193)")
+            search_input = st.text_input("關鍵字搜尋 (選填)")
+        with col2:
+            cost = st.number_input("持有成本 (NT$)", value=10000.0)
+            analyze_btn = st.button("🚀 執行卡牌分析") # 變數在這裡被賦值
     if search_input:
         # 將搜尋處理與 URL 組裝分開，避免 F-string 括號地獄
         query = search_input.replace(' ', '+').replace('/', '%2F')
