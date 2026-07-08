@@ -27,7 +27,7 @@ with st.sidebar:
     st.header("功能導航")
     # 將 radio 綁定到 session_state['current_page']
     page = st.radio(
-        "請選擇功能", 
+        "", 
         ["首頁", "卡牌分析", "投資分析", "卡牌庫", "PSA 查詢"], 
         key="current_page"
     )
@@ -36,8 +36,8 @@ with st.sidebar:
 
 # 1. 首頁 (Dashboard)
 if page == "首頁":
-    st.title("歡迎使用卡牌投資管理系統")
-    st.write("請選擇下方按鈕進入對應功能：")
+    st.title("卡牌投資管理系統")
+    st.write("功能列表：")
     
     # 建立 4 個欄位放置按鈕，並綁定 on_click 事件
     c1, c2, c3, c4 = st.columns(4)
