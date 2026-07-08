@@ -4,6 +4,8 @@ import pandas as pd
 import plotly.graph_objects as go
 import cv2
 import numpy as np
+import base64
+import streamlit.components.v1 as components
 from PIL import Image
 from scraper import (get_chart_data, analyze_data, get_product_name, 
                      create_professional_chart, get_psa_pop_from_cert_url,
@@ -175,54 +177,113 @@ elif page == "PSA 查詢":
 # 6. 置中檢測 (原生 Python 影像處理版)
 elif page == "置中檢測":
     st.title("📏 專業級卡牌置中檢測 (PSA 10 模擬)")
-    st.info("第一步：請點擊圖片四個角，校正透視偏差；第二步：調整滑桿計算邊框比。")
-
+    st.markdown("請上傳卡牌正面影像。**請直接用滑鼠在圖片上拖曳四條紅線**，對齊卡牌原畫的內邊界。系統將自動以嚴格的 **54.5/46.5** 標準為您判定。")
+    
     uploaded_file = st.file_uploader("上傳卡牌圖片", type=["jpg", "jpeg", "png"])
     
     if uploaded_file is not None:
-        # 轉為 OpenCV 格式
-        file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
-        img = cv2.imdecode(file_bytes, 1)
-        img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        h, w = img.shape[:2]
+        # 將圖片轉換為 Base64 以便傳遞給前端 HTML
+        base64_img = base64.b64encode(uploaded_file.getvalue()).decode("utf-8")
+        img_uri = f"data:image/jpeg;base64,{base64_img}"
+        
+        # 建立純前端的 HTML/JS 互動畫布
+        html_code = f"""
+        <div style="text-align: center; font-family: sans-serif; color: #333;">
+            <h3 id="result" style="margin-bottom: 5px;">L/R: 50.0/50.0 | T/B: 50.0/50.0</h3>
+            <p id="status" style="font-weight: bold; font-size: 18px; margin-top: 0;"></p>
+            <canvas id="canvas" style="border: 2px dashed #ccc; cursor: crosshair; max-width: 100%;"></canvas>
+        </div>
 
-        # 簡單校正邏輯：這裡為了流暢，我們設定為自動偵測邊緣或讓用戶輸入四個頂點
-        # 為簡化操作，這裡採用「透視拉伸」的邏輯架構
-        st.write("影像已透過透視校正模組處理...")
-        
-        # --- 紅線滑桿計算邏輯 ---
-        left_border = st.slider("調整內框左側", 0, w//2, int(w*0.05))
-        right_border = st.slider("調整內框右側", w//2, w, int(w*0.95))
-        top_border = st.slider("調整內框上方", 0, h//2, int(h*0.05))
-        bottom_border = st.slider("調整內框下方", h//2, h, int(h*0.95))
+        <script>
+            const canvas = document.getElementById('canvas');
+            const ctx = canvas.getContext('2d');
+            const img = new Image();
+            img.src = "{img_uri}";
 
-        # 計算邊距
-        l, r = left_border, w - right_border
-        t, b = top_border, h - bottom_border
+            let lx, rx, ty, by;
+            let isDragging = null;
+            let scale = 1;
+
+            img.onload = function() {{
+                // 設定畫布大小 (最大寬度 600px 以適應網頁)
+                const maxWidth = 600;
+                scale = img.width > maxWidth ? maxWidth / img.width : 1;
+                canvas.width = img.width * scale;
+                canvas.height = img.height * scale;
+                
+                // 初始化紅線位置 (內縮 10%)
+                lx = canvas.width * 0.1;
+                rx = canvas.width * 0.9;
+                ty = canvas.height * 0.1;
+                by = canvas.height * 0.9;
+                draw();
+            }}
+
+            function draw() {{
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                
+                // 畫紅線
+                ctx.lineWidth = 3;
+                ctx.strokeStyle = '#FF2A2A';
+                
+                ctx.beginPath(); ctx.moveTo(lx, 0); ctx.lineTo(lx, canvas.height); ctx.stroke(); // 左
+                ctx.beginPath(); ctx.moveTo(rx, 0); ctx.lineTo(rx, canvas.height); ctx.stroke(); // 右
+                ctx.beginPath(); ctx.moveTo(0, ty); ctx.lineTo(canvas.width, ty); ctx.stroke();  // 上
+                ctx.beginPath(); ctx.moveTo(0, by); ctx.lineTo(canvas.width, by); ctx.stroke();  // 下
+
+                // 計算邊距比例
+                let left_margin = lx;
+                let right_margin = canvas.width - rx;
+                let top_margin = ty;
+                let bottom_margin = canvas.height - by;
+
+                let lr = (left_margin / (left_margin + right_margin)) * 100 || 50;
+                let tb = (top_margin / (top_margin + bottom_margin)) * 100 || 50;
+
+                // 更新文字顯示
+                document.getElementById('result').innerText = `左右置中 (L/R): ${{lr.toFixed(1)}} / ${{(100-lr).toFixed(1)}} | 上下置中 (T/B): ${{tb.toFixed(1)}} / ${{(100-tb).toFixed(1)}}`;
+
+                let status = document.getElementById('status');
+                // 嚴格的 54.5 / 46.5 判定標準
+                if (lr >= 45.5 && lr <= 54.5 && tb >= 45.5 && tb <= 54.5) {{
+                    status.innerText = "🏆 判定：完美置中 (符合 54.5/46.5 極致標準)";
+                    status.style.color = "#2e7d32"; // 綠色
+                }} else {{
+                    status.innerText = "❌ 判定：未達 PSA 10 極致標準";
+                    status.style.color = "#d32f2f"; // 紅色
+                }}
+            }}
+
+            // 滑鼠互動邏輯
+            const getPos = (e) => {{
+                const rect = canvas.getBoundingClientRect();
+                return {{ x: e.clientX - rect.left, y: e.clientY - rect.top }};
+            }};
+
+            canvas.onmousedown = (e) => {{
+                const {{x, y}} = getPos(e);
+                const threshold = 15; // 點擊感應範圍
+                if (Math.abs(x - lx) < threshold) isDragging = 'lx';
+                else if (Math.abs(x - rx) < threshold) isDragging = 'rx';
+                else if (Math.abs(y - ty) < threshold) isDragging = 'ty';
+                else if (Math.abs(y - by) < threshold) isDragging = 'by';
+            }};
+
+            canvas.onmousemove = (e) => {{
+                if (!isDragging) return;
+                const {{x, y}} = getPos(e);
+                if (isDragging === 'lx') lx = Math.max(0, Math.min(x, rx - 10));
+                if (isDragging === 'rx') rx = Math.min(canvas.width, Math.max(x, lx + 10));
+                if (isDragging === 'ty') ty = Math.max(0, Math.min(y, by - 10));
+                if (isDragging === 'by') by = Math.min(canvas.height, Math.max(y, ty + 10));
+                draw();
+            }};
+
+            canvas.onmouseup = () => isDragging = null;
+            canvas.onmouseleave = () => isDragging = null;
+        </script>
+        """
         
-        # 計算比例
-        lr_ratio = (l / (l + r) * 100)
-        tb_ratio = (t / (t + b) * 100)
-        
-        # 繪製紅線
-        cv2.line(img_rgb, (left_border, 0), (left_border, h), (255, 0, 0), 5)
-        cv2.line(img_rgb, (right_border, 0), (right_border, h), (255, 0, 0), 5)
-        cv2.line(img_rgb, (0, top_border), (w, top_border), (255, 0, 0), 5)
-        cv2.line(img_rgb, (0, bottom_border), (w, bottom_border), (255, 0, 0), 5)
-        
-        st.image(img_rgb, use_container_width=True)
-        
-        # --- 判定邏輯：嚴格版 (54.5 / 46.5) ---
-        # PSA 容許度計算：54.5% 代表偏移極限
-        st.markdown("### 📊 檢測結果 (嚴格模式)")
-        res_col1, res_col2 = st.columns(2)
-        res_col1.metric("左右比例 (L/R)", f"{lr_ratio:.1f} / {100-lr_ratio:.1f}")
-        res_col2.metric("上下比例 (T/B)", f"{tb_ratio:.1f} / {100-tb_ratio:.1f}")
-        
-        # 嚴格標準判定
-        if (45.5 <= lr_ratio <= 54.5) and (45.5 <= tb_ratio <= 54.5):
-            st.success("🏆 判定：完美置中 (符合 54.5/46.5 極致標準)")
-        elif (45.5 <= lr_ratio <= 54.5) and (45.5 <= tb_ratio <= 54.5):
-            st.warning("⚠️ 判定：符合 PSA 10 標準，但未達極致置中。")
-        else:
-            st.error("❌ 判定：未達 PSA 10 置中要求。")
+        # 渲染前端組件，高度設定為 800px 確保畫布完整顯示
+        components.html(html_code, height=800)
