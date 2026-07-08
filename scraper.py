@@ -7,6 +7,7 @@ from bs4 import BeautifulSoup
 import plotly.graph_objects as go
 import numpy as np
 import re
+import math
 
 async def get_chart_data(product_id, option_id):
     url = f"https://snkrdunk.com/v1/apparels/{product_id}/sales-chart/used?range=all&salesChartOptionId={option_id}"
@@ -93,14 +94,11 @@ def calculate_investment_metrics(json_data, cost_twd, rate=0.20):
     df = pd.DataFrame(json_data['points'], columns=['timestamp', 'price_jpy'])
     df['price_twd'] = df['price_jpy'] * rate
     
-    # 確保資料依時間排序
     df = df.sort_values('timestamp').reset_index(drop=True)
     if len(df) < 30: return None
 
-    # 1. 計算 EMA-60 (指數移動平均，對近期價格賦予更高權重)
+    # 1. 基礎指標計算
     df['ema_60'] = df['price_twd'].ewm(span=60, adjust=False).mean()
-    
-    # 2. 計算 RSI-14 (相對強弱指標)
     delta = df['price_twd'].diff()
     gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
     loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
@@ -110,29 +108,36 @@ def calculate_investment_metrics(json_data, cost_twd, rate=0.20):
     current_price = df['price_twd'].iloc[-1]
     ema_60 = df['ema_60'].iloc[-1]
     rsi = df['rsi_14'].iloc[-1]
-    if np.isnan(rsi): rsi = 50 # 預設中性數值
+    if np.isnan(rsi): rsi = 50
     
-    # 計算乖離率
     bias_rate = ((current_price - ema_60) / ema_60) * 100
     
-    # 3. 理論預測模型：均值回歸 + 動能調整
-    # 假設未來 60 天，價格會向均線回歸 50% 的差距 (Reversion Factor = 0.5)
-    reversion_factor = 0.5 
-    projected_price = current_price + (ema_60 - current_price) * reversion_factor
-    
-    # 動能過激調整：根據 RSI 給予溢價或折價懲罰
-    if rsi < 30:
-        projected_price *= 1.05  # 超賣區：預期報復性反彈，給予 5% 溢價
-    elif rsi > 70:
-        projected_price *= 0.95  # 超買區：預期獲利了結賣壓，給予 5% 折價
+    # 2. 定義目標收斂價
+    target_price = ema_60
+    if rsi < 30: target_price *= 1.05
+    elif rsi > 70: target_price *= 0.95
         
-    roi_60d = ((projected_price - cost_twd) / cost_twd) * 100
+    # 3. 計算多節點時間序列預測 (5, 10, 15, 30, 45, 60 天)
+    predictions = {0: current_price}
+    momentum = (rsi - 50) / 50.0  # 動能量化 (-1 到 1)
+    
+    for t in [5, 10, 15, 30, 45, 60]:
+        # A. 均值回歸組件 (隨時間逐步向 target_price 靠近)
+        reversion = current_price + (target_price - current_price) * ((t / 60.0) ** 0.8)
+        
+        # B. 動能過衝組件 (模擬短期非理性繁榮或恐慌，峰值約在第 15 天)
+        surge = current_price * momentum * 0.12 * (t / 15.0) * math.exp(1 - (t / 15.0))
+        
+        predictions[t] = reversion + surge
+
+    roi_60d = ((predictions[60] - cost_twd) / cost_twd) * 100
     
     return {
         "latest": current_price,
         "ema_60": ema_60,
         "bias_rate": bias_rate,
         "rsi": rsi,
-        "projected_60d": projected_price,
+        "predictions": predictions,
+        "projected_60d": predictions[60],
         "roi_60d": roi_60d
     }
