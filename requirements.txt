@@ -9,3 +9,5 @@ gspread
 oauth2client
 beautifulsoup4
 Pillow
+opencv-python
+numpy
