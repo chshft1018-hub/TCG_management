@@ -20,7 +20,7 @@ with st.sidebar:
 # --- 主要頁面 ---
 if page == "卡牌分析":
     st.title("📊 卡牌分析中心")
-    
+    analyze_btn = False
     # 將搜尋與設定移至中間區塊
     with st.expander("🔍 搜尋與分析設定", expanded=True):
         col1, col2 = st.columns(2)
