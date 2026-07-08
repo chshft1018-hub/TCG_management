@@ -42,8 +42,8 @@ if page == "首頁":
     c1, c2, c3, c4 = st.columns(4)
     c1.button("📊 前往卡牌分析", use_container_width=True, on_click=navigate_to, args=("卡牌分析",))
     c2.button("📈 前往投資分析", use_container_width=True, on_click=navigate_to, args=("投資分析",))
-    c3.button("📂 前往卡牌庫", use_container_width=True, on_click=navigate_to, args=("卡牌庫",))
-    c4.button("🛡️ 前往 PSA 查詢", use_container_width=True, on_click=navigate_to, args=("PSA 查詢",))
+    c3.button("🛡️ 前往 PSA 查詢", use_container_width=True, on_click=navigate_to, args=("PSA 查詢",))
+    c4.button("📂 前往卡牌庫", use_container_width=True, on_click=navigate_to, args=("卡牌庫",))
 
 # 2. 卡牌分析
 elif page == "卡牌分析":
