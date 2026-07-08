@@ -95,14 +95,33 @@ elif page == "投資分析":
     if res:
         metrics = calculate_investment_metrics(res['data_PSA'], res['cost'])
         if metrics:
-            st.subheader("針對最新查詢卡牌之策略預測")
-            c1, c2, c3, c4 = st.columns(4)
-            c1.metric("60日均價 (SMA)", f"NT${metrics['sma_period']:,.0f}")
+            st.subheader("針對最新查詢卡牌之計量策略預測")
+            
+            # 第一排：趨勢與動能
+            c1, c2, c3 = st.columns(3)
+            c1.metric("60日指數均價 (EMA)", f"NT${metrics['ema_60']:,.0f}")
             c2.metric("乖離率", f"{metrics['bias_rate']:.2f}%")
-            c3.metric("60天預測價", f"NT${metrics['projected_60d']:,.0f}")
-            c4.metric("預期 ROI", f"{metrics['roi_60d']:.2f}%")
+            
+            # 根據 RSI 給予不同顏色的市場情緒提示
+            rsi_val = metrics['rsi']
+            if rsi_val >= 70:
+                rsi_status = "🔴 超買 (高風險)"
+            elif rsi_val <= 30:
+                rsi_status = "🟢 超賣 (反彈契機)"
+            else:
+                rsi_status = "🟡 中性盤整"
+            c3.metric("RSI (14) 市場情緒", f"{rsi_val:.1f}", delta=rsi_status, delta_color="off")
+            
+            st.markdown("---")
+            
+            # 第二排：均值回歸預測
+            st.markdown("#### 基於均值回歸理論之 60 天預估")
+            p1, p2 = st.columns(2)
+            p1.metric("模型預測價", f"NT${metrics['projected_60d']:,.0f}")
+            p2.metric("預期 ROI", f"{metrics['roi_60d']:.2f}%")
+            
         else:
-            st.warning("數據不足，無法產生 60 天預測指標。")
+            st.warning("數據樣本數不足 (需大於30筆交易紀錄)，無法產生量化預測指標。")
     
     st.markdown("---")
     if st.button("🔄 計算整體組合績效"):
