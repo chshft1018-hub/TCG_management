@@ -27,7 +27,7 @@ with st.sidebar:
     st.header("功能導航")
     # 將 radio 綁定到 session_state['current_page']
     page = st.radio( "功能區",
-        ["首頁", "卡牌分析", "投資分析", "卡牌庫", "PSA 查詢"], 
+        ["首頁", "卡牌分析", "投資分析", "PSA 查詢", "卡牌庫"], 
         key="current_page"
     )
 
