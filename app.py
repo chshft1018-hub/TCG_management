@@ -8,11 +8,11 @@ from app_utils import get_gspread_client, update_google_sheet, load_google_sheet
 
 st.set_page_config(page_title="卡牌投資管理", layout="wide")
 
-# --- 初始化 ---
+# --- 初始化 Session ---
 if 'card_library' not in st.session_state: st.session_state['card_library'] = load_google_sheet()
 if 'last_analysis' not in st.session_state: st.session_state['last_analysis'] = None
 
-# --- 側邊欄：僅留功能導航 ---
+# --- 側邊欄 ---
 with st.sidebar:
     st.header("功能導航")
     page = st.radio("請選擇功能", ["卡牌分析", "卡牌庫"])
@@ -20,29 +20,23 @@ with st.sidebar:
 # --- 主要頁面 ---
 if page == "卡牌分析":
     st.title("📊 卡牌分析中心")
-    analyze_btn = False
-    # 將搜尋與設定移至中間區塊
-with st.expander("🔍 搜尋與分析設定", expanded=True):
+    
+    # 搜尋與分析設定
+    with st.expander("🔍 搜尋與分析設定", expanded=True):
         col1, col2 = st.columns(2)
         with col1:
             product_id = st.text_input("商品 ID", value='826553')
             search_input = st.text_input("關鍵字搜尋 (選填)")
-        with col2:
-            cost = st.number_input("持有成本 (NT$)", value=10000.0)
-            analyze_btn = st.button("🚀 執行卡牌分析") # 變數在這裡被賦值
-        if search_input:
-        # 將搜尋處理與 URL 組裝分開，避免 F-string 括號地獄
-         query = search_input.replace(' ', '+').replace('/', '%2F')
-         search_url = f"https://snkrdunk.com/search?keywords={query}"
-        # 這裡的括號現在完全對稱了
-        st.markdown(f"[前往 SNKRDUNK 搜尋]({search_url})")
+            if search_input:
+                query = search_input.replace(' ', '+').replace('/', '%2F')
+                st.markdown(f"[前往 SNKRDUNK 搜尋](https://snkrdunk.com/search?keywords={query})")
         with col2:
             cost = st.number_input("持有成本 (NT$)", value=10000.0)
             analyze_btn = st.button("🚀 執行卡牌分析")
             
-    # PSA 查詢區塊
-        with st.expander("🛡️ PSA POP 查詢"):
-         cert_input = st.text_input("輸入 PSA 網址或編號")
+    # PSA 查詢
+    with st.expander("🛡️ PSA POP 查詢"):
+        cert_input = st.text_input("輸入 PSA 網址或編號")
         if st.button("查詢數據"):
             url = cert_input if cert_input.startswith("http") else f"https://www.psacard.com/cert/{cert_input}/psa"
             st.session_state['psa_data'] = get_psa_pop_from_cert_url(url)
@@ -66,7 +60,6 @@ with st.expander("🔍 搜尋與分析設定", expanded=True):
     if res:
         st.subheader(f"當前分析：{res['name']}")
         
-        # 顯示指標與操作
         if st.button("💾 存入卡牌庫"):
             roi_val = ((res['m_PSA']['latest'] - res['cost']) / res['cost']) * 100
             new_data = {"名稱": str(res['name']), "成本": float(res['cost']), "ROI": f"{roi_val:.2f}%"}
@@ -74,8 +67,24 @@ with st.expander("🔍 搜尋與分析設定", expanded=True):
             update_google_sheet(st.session_state['card_library'])
             st.success("已存入資料庫")
 
-        # 顯示各項數據指標... (維持原邏輯)
-        # 顯示疊圖... (維持原邏輯)
+        # 顯示指標 (PSA 與 ROI)
+        if 'psa_data' in st.session_state and isinstance(st.session_state['psa_data'], dict):
+            d = st.session_state['psa_data']
+            c1, c2 = st.columns(2)
+            c1.metric("總鑑定數量", d.get('total', '0'))
+            c2.metric("高於此卡數量", d.get('higher', '0'))
+        
+        cols = st.columns(4)
+        roi = ((res['m_PSA']['latest'] - res['cost']) / res['cost']) * 100
+        cols[0].metric("當前價值", f"NT${res['m_PSA']['latest']:,.0f}")
+        cols[1].metric("持有成本", f"NT${res['cost']:,.0f}")
+        cols[2].metric("ROI (PSA10)", f"{roi:.2f}%")
+        cols[3].metric("市場週均價", f"NT${res['m_PSA']['avg_1w']:,.0f}")
+
+        # 顯示疊圖
+        st.subheader("📊 價格趨勢疊加分析")
+        fig = create_combined_chart(res['data_A'], res['data_PSA'], "走勢比較")
+        st.plotly_chart(fig, use_container_width=True)
 
 elif page == "卡牌庫":
     st.title("📂 卡牌庫")
