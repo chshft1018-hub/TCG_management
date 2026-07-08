@@ -25,7 +25,7 @@ with st.sidebar:
 if page == "首頁":
     st.title("卡牌投資管理系統")
     st.write("功能列表：")
-    c1, c2, c3, c4, c5 = st.columns(4)
+    c1, c2, c3, c4, c5 = st.columns(5)
     c1.button("📊 前往卡牌分析", use_container_width=True, on_click=navigate_to, args=("卡牌分析",))
     c2.button("📈 前往投資分析", use_container_width=True, on_click=navigate_to, args=("投資分析",))
     c3.button("🛡️ 前往 PSA 查詢", use_container_width=True, on_click=navigate_to, args=("PSA 查詢",))
