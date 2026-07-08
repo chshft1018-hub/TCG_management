@@ -1,6 +1,7 @@
 import streamlit as st
 import asyncio
 import pandas as pd
+import plotly.graph_objects as go
 from scraper import (get_chart_data, analyze_data, get_product_name, 
                      create_professional_chart, get_psa_pop_from_cert_url,
                      calculate_investment_metrics, create_combined_chart)
@@ -8,37 +9,22 @@ from app_utils import update_google_sheet, load_google_sheet
 
 st.set_page_config(page_title="卡牌投資管理", layout="wide")
 
-# --- 初始化 Session State ---
 if 'card_library' not in st.session_state: st.session_state['card_library'] = load_google_sheet()
 if 'last_analysis' not in st.session_state: st.session_state['last_analysis'] = None
 if 'psa_data' not in st.session_state: st.session_state['psa_data'] = None
+if 'current_page' not in st.session_state: st.session_state['current_page'] = "首頁"
 
-# 初始化當前頁面
-if 'current_page' not in st.session_state:
-    st.session_state['current_page'] = "首頁"
-
-# --- 定義導航回呼函式 (Callback) ---
-# 這是解決 API Exception 的關鍵，讓狀態更新在畫面重繪之前完成
 def navigate_to(page_name):
     st.session_state['current_page'] = page_name
 
-# --- 側邊欄：導航 ---
 with st.sidebar:
     st.header("功能導航")
-    # 將 radio 綁定到 session_state['current_page']
-    page = st.radio( "功能區",
-        ["首頁", "卡牌分析", "投資分析", "PSA 查詢", "卡牌庫"], 
-        key="current_page"
-    )
+    page = st.radio( "功能區", ["首頁", "卡牌分析", "投資分析", "PSA 查詢", "卡牌庫"], key="current_page")
 
-# --- 主要頁面邏輯 ---
-
-# 1. 首頁 (Dashboard)
+# 1. 首頁
 if page == "首頁":
     st.title("卡牌投資管理系統")
     st.write("功能列表：")
-    
-    # 建立 4 個欄位放置按鈕，並綁定 on_click 事件
     c1, c2, c3, c4 = st.columns(4)
     c1.button("📊 前往卡牌分析", use_container_width=True, on_click=navigate_to, args=("卡牌分析",))
     c2.button("📈 前往投資分析", use_container_width=True, on_click=navigate_to, args=("投資分析",))
@@ -48,7 +34,6 @@ if page == "首頁":
 # 2. 卡牌分析
 elif page == "卡牌分析":
     st.title("📊 卡牌分析中心")
-    
     with st.expander("🔍 搜尋與分析設定", expanded=True):
         col1, col2 = st.columns(2)
         with col1:
@@ -76,7 +61,6 @@ elif page == "卡牌分析":
     res = st.session_state.get('last_analysis')
     if res:
         st.subheader(f"當前分析：{res['name']}")
-        
         if st.button("💾 存入卡牌庫"):
             new_data = {"名稱": res['name'], "成本": float(res['cost']), "ROI": f"{((res['m_PSA']['latest']-res['cost'])/res['cost']*100):.2f}%"}
             st.session_state['card_library'].append(new_data)
@@ -87,7 +71,7 @@ elif page == "卡牌分析":
         fig = create_combined_chart(res['data_A'], res['data_PSA'], "走勢比較")
         st.plotly_chart(fig, use_container_width=True)
 
-# 3. 投資分析 (升級：RSI + 乖離率 雙重過濾策略)
+# 3. 投資分析 (升級：視覺化趨勢與時機分析)
 elif page == "投資分析":
     st.title("📈 進階投資分析")
     
@@ -97,57 +81,58 @@ elif page == "投資分析":
         if metrics:
             st.subheader(f"針對【{res['name']}】之計量策略預測")
             
-            # 提取關鍵指標
             rsi_val = metrics['rsi']
             bias_rate = metrics['bias_rate']
+            preds = metrics['predictions']
             
-            # 第一排：趨勢與動能
             c1, c2, c3 = st.columns(3)
             c1.metric("60日指數均價 (EMA)", f"NT${metrics['ema_60']:,.0f}")
-            c2.metric("乖離率", f"{bias_rate:.2f}%")
+            c2.metric("當前乖離率", f"{bias_rate:.2f}%")
             c3.metric("RSI (14) 市場情緒", f"{rsi_val:.1f}")
-            
-            # --- 雙重指標策略邏輯 (Double Confirmation) ---
-            st.markdown("### 💡 AI 投資策略建議")
-            
-            # 1. 極端超買 (強烈賣出)
-            if rsi_val >= 70 and bias_rate >= 20:
-                st.error("**🔴 強烈賣出訊號 (極度超買 + 嚴重乖離)**\n\n指標顯示目前市場陷入非理性追高，且價格已嚴重脫離60日均線（乖離率>20%）。建議**分批獲利了結**，切勿在此時追高進場，高機率面臨大幅回檔。")
-            
-            # 2. 一般超買 (調節)
-            elif rsi_val >= 70 and bias_rate < 20:
-                st.warning("**🟠 調節訊號 (市場過熱)**\n\n市場情緒狂熱 (RSI>70)，但價格尚未完全脫離均線引力。可考慮適度調節持倉鎖定利潤，或提高停利點防守。")
-            
-            # 3. 極端超賣 (強烈買進)
-            elif rsi_val <= 30 and bias_rate <= -20:
-                st.success("**🟢 強烈買進訊號 (極度超賣 + 深度折價)**\n\n市場出現恐慌性拋售，不僅情緒冰點，價格更深跌至長期均線下方（乖離率<-20%）。這通常是絕佳的**「黃金坑」**，強烈建議逢低建立底倉。")
-            
-            # 4. 一般超賣 (佈局)
-            elif rsi_val <= 30 and bias_rate > -20:
-                st.info("**🔵 佈局訊號 (情緒悲觀)**\n\n市場情緒過度悲觀 (RSI<30)，浮現撿便宜機會。由於乖離尚未極端，建議採取**「定時定額 / 網格分批」**方式緩步進場。")
-            
-            # 5. 中性偏高
-            elif 30 < rsi_val < 70 and bias_rate >= 15:
-                st.warning("**🟡 觀望訊號 (價格偏高)**\n\n市場情緒雖然中性，但目前價格相對於均線稍嫌偏高（乖離較大），追高風險增加，建議等待價格回落靠近均線再行佈局。")
-            
-            # 6. 中性偏低
-            elif 30 < rsi_val < 70 and bias_rate <= -15:
-                st.info("**🟡 觀望訊號 (跌深盤整)**\n\n情緒中性但價格處於低檔區間。這代表賣壓已減輕但買盤尚未進駐，建議確認底部支撐（或等放量）後再進場。")
-            
-            # 7. 絕對中性
-            else:
-                st.info("**⚖️ 中性盤整 (持倉觀望)**\n\n目前多空交戰，價格貼近均線且情緒平穩，處於健康震盪區間。建議保持現有倉位不動，靜待明確的趨勢突破。")
             
             st.markdown("---")
             
-            # 第二排：均值回歸預測
-            st.markdown("#### 基於均值回歸理論之 60 天預估")
+            # --- 繪製 60 天預測曲線圖 ---
+            st.markdown("### 📊 未來 60 天價格走勢預測")
+            
+            pred_df = pd.DataFrame(list(preds.items()), columns=['Days', 'Predicted_Price'])
+            fig_pred = go.Figure()
+            fig_pred.add_trace(go.Scatter(
+                x=pred_df['Days'], y=pred_df['Predicted_Price'],
+                mode='lines+markers+text',
+                text=[f"NT${p:,.0f}" if d in [0, 15, 60] else "" for d, p in zip(pred_df['Days'], pred_df['Predicted_Price'])],
+                textposition="top center",
+                line=dict(color='#9C27B0', width=3, shape='spline'),
+                marker=dict(size=8, color='#9C27B0')
+            ))
+            fig_pred.update_layout(
+                xaxis_title="未來天數", yaxis_title="預測價格 (NT$)",
+                plot_bgcolor='white', hovermode="x unified", height=400,
+                xaxis=dict(tickmode='array', tickvals=[0, 5, 10, 15, 30, 45, 60], ticktext=['現在', '5天', '10天', '15天', '30天', '45天', '60天'])
+            )
+            st.plotly_chart(fig_pred, use_container_width=True)
+
+            # --- 最佳出手時機分析 ---
+            st.markdown("### ⏱️ 最佳操作時機判定")
+            
+            best_sell_day = max(preds, key=preds.get)
+            best_buy_day = min(preds, key=preds.get)
+            
+            if rsi_val >= 60:
+                st.error(f"**🔴 賣出策略分析 (高檔調節)**\n\n根據動能過衝模型，預期價格的最高峰可能落在 **第 {best_sell_day} 天** (預估價: NT${preds[best_sell_day]:,.0f})。若您持有現貨，建議在此時間區間內分批獲利了結，以規避後續的均值回落風險。")
+            elif rsi_val <= 40:
+                st.success(f"**🟢 買進策略分析 (低檔佈局)**\n\n根據均值回歸模型，預期價格的最低谷可能落在 **第 {best_buy_day} 天** (預估價: NT${preds[best_buy_day]:,.0f})。市場拋售情緒即將觸底，這將是建立底倉、逢低買進的最佳黃金窗口。")
+            else:
+                st.info(f"**🟡 中性觀望分析**\n\n目前市場動能平穩。圖表顯示價格波動區間狹窄（預估最高 NT${max(preds.values()):,.0f} / 最低 NT${min(preds.values()):,.0f}），此時進出場的套利空間有限，建議持倉觀望。")
+            
+            st.markdown("---")
+            st.markdown("#### 長期預測概覽 (60天後)")
             p1, p2 = st.columns(2)
-            p1.metric("模型預測價", f"NT${metrics['projected_60d']:,.0f}")
+            p1.metric("60天後預測價", f"NT${metrics['projected_60d']:,.0f}")
             p2.metric("預期 ROI", f"{metrics['roi_60d']:.2f}%")
             
         else:
-            st.warning("數據樣本數不足 (需大於30筆交易紀錄)，無法產生量化預測指標。")
+            st.warning("數據樣本數不足，無法產生量化預測指標。")
     
     st.markdown("---")
     if st.button("🔄 計算整體組合績效"):
@@ -162,24 +147,18 @@ elif page == "投資分析":
 elif page == "卡牌庫":
     st.title("📂 卡牌庫")
     df = pd.DataFrame(load_google_sheet())
-    if not df.empty: 
-        st.dataframe(df, use_container_width=True)
-    else: 
-        st.info("無庫存資料")
+    if not df.empty: st.dataframe(df, use_container_width=True)
+    else: st.info("無庫存資料")
 
 # 5. PSA 查詢
 elif page == "PSA 查詢":
     st.title("🛡️ PSA POP 查詢")
-    st.write("請輸入 PSA 鑑定網址或憑證編號以獲取卡牌的 Population 數據。")
-    
     with st.container(border=True):
         cert_input = st.text_input("輸入 PSA 網址或編號")
         if st.button("查詢 PSA 數據"):
             with st.spinner("解析中..."):
                 url = cert_input if cert_input.startswith("http") else f"https://www.psacard.com/cert/{cert_input}/psa"
                 st.session_state['psa_data'] = get_psa_pop_from_cert_url(url)
-    
-    # 顯示查詢結果
     if st.session_state.get('psa_data'):
         if isinstance(st.session_state['psa_data'], dict):
             st.success("✅ 查詢成功！")
