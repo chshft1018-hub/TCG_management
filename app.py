@@ -26,7 +26,7 @@ def navigate_to(page_name):
 with st.sidebar:
     st.header("功能導航")
     # 將 radio 綁定到 session_state['current_page']
-    page = st.radio( ，
+    page = st.radio( ,
         ["首頁", "卡牌分析", "投資分析", "卡牌庫", "PSA 查詢"], 
         key="current_page"
     )
