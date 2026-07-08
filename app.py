@@ -19,7 +19,7 @@ def navigate_to(page_name):
 
 with st.sidebar:
     st.header("功能導航")
-    page = st.radio( "功能區", ["首頁", "卡牌分析", "投資分析", "PSA 查詢", "卡牌庫"], key="current_page")
+    page = st.radio( "功能區", ["首頁", "卡牌分析", "投資分析", "PSA 查詢", "置中檢測","卡牌庫"], key="current_page")
 
 # 1. 首頁
 if page == "首頁":
@@ -29,8 +29,10 @@ if page == "首頁":
     c1.button("📊 前往卡牌分析", use_container_width=True, on_click=navigate_to, args=("卡牌分析",))
     c2.button("📈 前往投資分析", use_container_width=True, on_click=navigate_to, args=("投資分析",))
     c3.button("🛡️ 前往 PSA 查詢", use_container_width=True, on_click=navigate_to, args=("PSA 查詢",))
-    c4.button("📂 前往卡牌庫", use_container_width=True, on_click=navigate_to, args=("卡牌庫",))
-
+    c4.button("📏 前往置中檢測", use_container_width=True, on_click=navigate_to, args=("置中檢測",))
+    c5.button("📂 前往卡牌庫", use_container_width=True, on_click=navigate_to, args=("卡牌庫",))
+    
+# 在 page == "首頁" 的區塊中新增：
 # 2. 卡牌分析
 elif page == "卡牌分析":
     st.title("📊 卡牌分析中心")
