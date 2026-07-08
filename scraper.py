@@ -92,21 +92,47 @@ def calculate_investment_metrics(json_data, cost_twd, rate=0.20):
     if not json_data or 'points' not in json_data: return None
     df = pd.DataFrame(json_data['points'], columns=['timestamp', 'price_jpy'])
     df['price_twd'] = df['price_jpy'] * rate
-    now = pd.Timestamp.now()
-    for days in [180, 60, 30]:
-        cutoff = (now - pd.Timedelta(days=days)).timestamp() * 1000
-        df_period = df[df['timestamp'] >= cutoff].copy()
-        if len(df_period) >= 20: break
-    if len(df_period) < 20: return None
-    df_period['log_price'] = np.log(df_period['price_twd'])
-    X = np.arange(len(df_period)).reshape(-1, 1)
-    y = df_period['log_price'].values
-    model = np.polyfit(X.flatten(), y, 1)
-    projected_60d = np.exp(model[0] * (len(df_period) + 60) + model[1])
+    
+    # 確保資料依時間排序
+    df = df.sort_values('timestamp').reset_index(drop=True)
+    if len(df) < 30: return None
+
+    # 1. 計算 EMA-60 (指數移動平均，對近期價格賦予更高權重)
+    df['ema_60'] = df['price_twd'].ewm(span=60, adjust=False).mean()
+    
+    # 2. 計算 RSI-14 (相對強弱指標)
+    delta = df['price_twd'].diff()
+    gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+    rs = gain / loss
+    df['rsi_14'] = 100 - (100 / (1 + rs))
+    
+    current_price = df['price_twd'].iloc[-1]
+    ema_60 = df['ema_60'].iloc[-1]
+    rsi = df['rsi_14'].iloc[-1]
+    if np.isnan(rsi): rsi = 50 # 預設中性數值
+    
+    # 計算乖離率
+    bias_rate = ((current_price - ema_60) / ema_60) * 100
+    
+    # 3. 理論預測模型：均值回歸 + 動能調整
+    # 假設未來 60 天，價格會向均線回歸 50% 的差距 (Reversion Factor = 0.5)
+    reversion_factor = 0.5 
+    projected_price = current_price + (ema_60 - current_price) * reversion_factor
+    
+    # 動能過激調整：根據 RSI 給予溢價或折價懲罰
+    if rsi < 30:
+        projected_price *= 1.05  # 超賣區：預期報復性反彈，給予 5% 溢價
+    elif rsi > 70:
+        projected_price *= 0.95  # 超買區：預期獲利了結賣壓，給予 5% 折價
+        
+    roi_60d = ((projected_price - cost_twd) / cost_twd) * 100
+    
     return {
-        "latest": df.iloc[-1]['price_twd'],
-        "sma_period": df_period['price_twd'].mean(),
-        "bias_rate": ((df.iloc[-1]['price_twd'] - df_period['price_twd'].mean()) / df_period['price_twd'].mean()) * 100,
-        "projected_60d": projected_60d,
-        "roi_60d": ((projected_60d - cost_twd) / cost_twd) * 100
+        "latest": current_price,
+        "ema_60": ema_60,
+        "bias_rate": bias_rate,
+        "rsi": rsi,
+        "projected_60d": projected_price,
+        "roi_60d": roi_60d
     }
