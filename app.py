@@ -177,113 +177,270 @@ elif page == "PSA 查詢":
 # 6. 置中檢測 (原生 Python 影像處理版)
 elif page == "置中檢測":
     st.title("📏 專業級卡牌置中檢測 (PSA 10 模擬)")
-    st.markdown("請上傳卡牌正面影像。**請直接用滑鼠在圖片上拖曳四條紅線**，對齊卡牌原畫的內邊界。系統將自動以嚴格的 **54.5/46.5** 標準為您判定。")
+    st.markdown("請上傳卡牌正面影像。系統採用二階段判定：**1. 拖拉藍點校正外框透視** ➡️ **2. 拖拉紅線判定內框比例**。")
     
     uploaded_file = st.file_uploader("上傳卡牌圖片", type=["jpg", "jpeg", "png"])
     
     if uploaded_file is not None:
-        # 將圖片轉換為 Base64 以便傳遞給前端 HTML
+        # 將圖片轉換為 Base64 格式，直接傳送給瀏覽器
         base64_img = base64.b64encode(uploaded_file.getvalue()).decode("utf-8")
         img_uri = f"data:image/jpeg;base64,{base64_img}"
         
-        # 建立純前端的 HTML/JS 互動畫布
-        html_code = f"""
-        <div style="text-align: center; font-family: sans-serif; color: #333;">
-            <h3 id="result" style="margin-bottom: 5px;">L/R: 50.0/50.0 | T/B: 50.0/50.0</h3>
-            <p id="status" style="font-weight: bold; font-size: 18px; margin-top: 0;"></p>
-            <canvas id="canvas" style="border: 2px dashed #ccc; cursor: crosshair; max-width: 100%;"></canvas>
-        </div>
+        # 純前端 HTML/JS 互動畫布模板
+        html_template = """
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <script async src="https://docs.opencv.org/4.8.0/opencv.js" type="text/javascript"></script>
+            <style>
+                body { font-family: sans-serif; text-align: center; color: #333; margin: 0; padding: 10px; }
+                #canvas-container { display: inline-block; position: relative; margin-top: 10px; }
+                /* 確保畫布會自動縮放不被裁切 */
+                canvas { border: 2px dashed #999; max-width: 100%; height: auto; touch-action: none; cursor: crosshair; }
+                .btn { padding: 12px 24px; font-size: 16px; font-weight: bold; color: white; background-color: #4CAF50; border: none; border-radius: 8px; cursor: pointer; margin: 5px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+                .btn-reset { background-color: #f44336; }
+                .btn:active { transform: translateY(2px); box-shadow: none; }
+                #status { font-weight: bold; font-size: 18px; margin: 5px 0; }
+                #result-text { font-size: 16px; margin: 5px 0; font-family: monospace; }
+            </style>
+        </head>
+        <body>
+            <h3 id="msg">🚀 影像處理引擎載入中...</h3>
+            <p id="sub-msg">請稍候，即將啟動互動校正畫布</p>
+            
+            <button id="btn-next" class="btn" style="display:none;">✅ 確認外框 (進行透視拉平)</button>
+            <button id="btn-reset" class="btn btn-reset" style="display:none;">🔄 重新校正外框</button>
+            
+            <div id="result-area" style="display:none; background:#f1f8e9; border:1px solid #c5e1a5; border-radius:8px; padding:10px; margin:10px auto; max-width:600px;">
+                <div id="result-text">L/R: -- | T/B: --</div>
+                <div id="status"></div>
+            </div>
 
-        <script>
-            const canvas = document.getElementById('canvas');
-            const ctx = canvas.getContext('2d');
-            const img = new Image();
-            img.src = "{img_uri}";
+            <div id="canvas-container">
+                <canvas id="canvas"></canvas>
+            </div>
 
-            let lx, rx, ty, by;
-            let isDragging = null;
-            let scale = 1;
-
-            img.onload = function() {{
-                // 設定畫布大小 (最大寬度 600px 以適應網頁)
-                const maxWidth = 600;
-                scale = img.width > maxWidth ? maxWidth / img.width : 1;
-                canvas.width = img.width * scale;
-                canvas.height = img.height * scale;
+            <script>
+                const imgUri = "___IMG_URI___";
+                const canvas = document.getElementById('canvas');
+                const ctx = canvas.getContext('2d');
                 
-                // 初始化紅線位置 (內縮 10%)
-                lx = canvas.width * 0.1;
-                rx = canvas.width * 0.9;
-                ty = canvas.height * 0.1;
-                by = canvas.height * 0.9;
-                draw();
-            }}
-
-            function draw() {{
-                ctx.clearRect(0, 0, canvas.width, canvas.height);
-                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                let phase = 0; // 0: loading, 1: corners(blue), 2: lines(red)
+                let img = new Image();
+                let imgCanvas = document.createElement('canvas'); // 原始圖片快取
+                let warpedCanvas = document.createElement('canvas'); // 變形後的圖片快取
                 
-                // 畫紅線
-                ctx.lineWidth = 3;
-                ctx.strokeStyle = '#FF2A2A';
-                
-                ctx.beginPath(); ctx.moveTo(lx, 0); ctx.lineTo(lx, canvas.height); ctx.stroke(); // 左
-                ctx.beginPath(); ctx.moveTo(rx, 0); ctx.lineTo(rx, canvas.height); ctx.stroke(); // 右
-                ctx.beginPath(); ctx.moveTo(0, ty); ctx.lineTo(canvas.width, ty); ctx.stroke();  // 上
-                ctx.beginPath(); ctx.moveTo(0, by); ctx.lineTo(canvas.width, by); ctx.stroke();  // 下
+                let corners = [];
+                let lines = {};
+                let dragObj = null;
 
-                // 計算邊距比例
-                let left_margin = lx;
-                let right_margin = canvas.width - rx;
-                let top_margin = ty;
-                let bottom_margin = canvas.height - by;
+                // 檢查 OpenCV 是否載入完成
+                function checkCv() {
+                    if (typeof cv !== 'undefined' && cv.Mat) initApp();
+                    else setTimeout(checkCv, 100);
+                }
+                checkCv();
 
-                let lr = (left_margin / (left_margin + right_margin)) * 100 || 50;
-                let tb = (top_margin / (top_margin + bottom_margin)) * 100 || 50;
+                function initApp() {
+                    img.src = imgUri;
+                    img.onload = () => {
+                        // 根據視窗大小計算合適的畫布尺寸 (防止裁切)
+                        const maxW = window.innerWidth * 0.9;
+                        const maxH = window.innerHeight * 0.7;
+                        const scale = Math.min(maxW / img.width, maxH / img.height, 1);
+                        
+                        imgCanvas.width = img.width * scale;
+                        imgCanvas.height = img.height * scale;
+                        imgCanvas.getContext('2d').drawImage(img, 0, 0, imgCanvas.width, imgCanvas.height);
+                        
+                        canvas.width = imgCanvas.width;
+                        canvas.height = imgCanvas.height;
 
-                // 更新文字顯示
-                document.getElementById('result').innerText = `左右置中 (L/R): ${{lr.toFixed(1)}} / ${{(100-lr).toFixed(1)}} | 上下置中 (T/B): ${{tb.toFixed(1)}} / ${{(100-tb).toFixed(1)}}`;
+                        // 初始化四個外框角點 (預設內縮 10%)
+                        let w = canvas.width, h = canvas.height;
+                        let ix = w * 0.1, iy = h * 0.1;
+                        corners = [
+                            {x: ix, y: iy}, {x: w - ix, y: iy}, 
+                            {x: w - ix, y: h - iy}, {x: ix, y: h - iy}
+                        ];
 
-                let status = document.getElementById('status');
-                // 嚴格的 54.5 / 46.5 判定標準
-                if (lr >= 45.5 && lr <= 54.5 && tb >= 45.5 && tb <= 54.5) {{
-                    status.innerText = "🏆 判定：完美置中 (符合 54.5/46.5 極致標準)";
-                    status.style.color = "#2e7d32"; // 綠色
-                }} else {{
-                    status.innerText = "❌ 判定：未達 PSA 10 極致標準";
-                    status.style.color = "#d32f2f"; // 紅色
-                }}
-            }}
+                        phase = 1;
+                        document.getElementById('msg').innerText = "📍 第一階段：拉動四個藍點，對齊卡牌「最外邊框」";
+                        document.getElementById('sub-msg').innerText = "這能修正拍照傾斜，提升後續判定精準度";
+                        document.getElementById('btn-next').style.display = "inline-block";
+                        
+                        draw();
+                    };
+                }
 
-            // 滑鼠互動邏輯
-            const getPos = (e) => {{
-                const rect = canvas.getBoundingClientRect();
-                return {{ x: e.clientX - rect.left, y: e.clientY - rect.top }};
-            }};
+                function draw() {
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-            canvas.onmousedown = (e) => {{
-                const {{x, y}} = getPos(e);
-                const threshold = 15; // 點擊感應範圍
-                if (Math.abs(x - lx) < threshold) isDragging = 'lx';
-                else if (Math.abs(x - rx) < threshold) isDragging = 'rx';
-                else if (Math.abs(y - ty) < threshold) isDragging = 'ty';
-                else if (Math.abs(y - by) < threshold) isDragging = 'by';
-            }};
+                    if (phase === 1) {
+                        ctx.drawImage(imgCanvas, 0, 0);
+                        
+                        // 畫藍色外框線
+                        ctx.beginPath();
+                        ctx.moveTo(corners[0].x, corners[0].y);
+                        for(let i=1; i<4; i++) ctx.lineTo(corners[i].x, corners[i].y);
+                        ctx.closePath();
+                        ctx.lineWidth = 2; ctx.strokeStyle = '#00BFFF'; ctx.stroke();
 
-            canvas.onmousemove = (e) => {{
-                if (!isDragging) return;
-                const {{x, y}} = getPos(e);
-                if (isDragging === 'lx') lx = Math.max(0, Math.min(x, rx - 10));
-                if (isDragging === 'rx') rx = Math.min(canvas.width, Math.max(x, lx + 10));
-                if (isDragging === 'ty') ty = Math.max(0, Math.min(y, by - 10));
-                if (isDragging === 'by') by = Math.min(canvas.height, Math.max(y, ty + 10));
-                draw();
-            }};
+                        // 畫四個藍色控制點
+                        ctx.fillStyle = 'rgba(0, 191, 255, 0.6)';
+                        corners.forEach(c => {
+                            ctx.beginPath(); ctx.arc(c.x, c.y, 12, 0, Math.PI * 2);
+                            ctx.fill(); ctx.stroke();
+                        });
+                    } 
+                    else if (phase === 2) {
+                        ctx.drawImage(warpedCanvas, 0, 0);
+                        
+                        // 畫四條紅線
+                        ctx.lineWidth = 3; ctx.strokeStyle = '#FF2A2A';
+                        ctx.beginPath(); ctx.moveTo(lines.lx, 0); ctx.lineTo(lines.lx, canvas.height); ctx.stroke();
+                        ctx.beginPath(); ctx.moveTo(lines.rx, 0); ctx.lineTo(lines.rx, canvas.height); ctx.stroke();
+                        ctx.beginPath(); ctx.moveTo(0, lines.ty); ctx.lineTo(canvas.width, lines.ty); ctx.stroke();
+                        ctx.beginPath(); ctx.moveTo(0, lines.by); ctx.lineTo(canvas.width, lines.by); ctx.stroke();
 
-            canvas.onmouseup = () => isDragging = null;
-            canvas.onmouseleave = () => isDragging = null;
-        </script>
+                        calculateResult();
+                    }
+                }
+
+                // 執行透視校正
+                document.getElementById('btn-next').onclick = () => {
+                    let src = cv.imread(imgCanvas);
+                    let dst = new cv.Mat();
+                    
+                    let srcTri = cv.matFromArray(4, 1, cv.CV_32FC2, [
+                        corners[0].x, corners[0].y, corners[1].x, corners[1].y,
+                        corners[2].x, corners[2].y, corners[3].x, corners[3].y
+                    ]);
+
+                    // 標準卡牌比例 63x88 -> 建立 504x704 的畫布
+                    let cardW = 504, cardH = 704;
+                    let dstTri = cv.matFromArray(4, 1, cv.CV_32FC2, [
+                        0, 0, cardW, 0, cardW, cardH, 0, cardH
+                    ]);
+
+                    let M = cv.getPerspectiveTransform(srcTri, dstTri);
+                    cv.warpPerspective(src, dst, M, new cv.Size(cardW, cardH));
+
+                    warpedCanvas.width = cardW; warpedCanvas.height = cardH;
+                    cv.imshow(warpedCanvas, dst);
+                    
+                    src.delete(); dst.delete(); M.delete(); srcTri.delete(); dstTri.delete();
+
+                    canvas.width = cardW; canvas.height = cardH;
+                    
+                    // 預設紅線位置
+                    lines = { lx: cardW*0.05, rx: cardW*0.95, ty: cardH*0.05, by: cardH*0.95 };
+                    
+                    phase = 2;
+                    document.getElementById('btn-next').style.display = 'none';
+                    document.getElementById('btn-reset').style.display = 'inline-block';
+                    document.getElementById('result-area').style.display = 'block';
+                    document.getElementById('msg').innerText = "📍 第二階段：自由拖動四條紅線，對齊卡牌「原畫像」";
+                    document.getElementById('sub-msg').innerHTML = "目前標準為最嚴格的極致 <strong>54.5 / 46.5</strong>";
+                    draw();
+                };
+
+                document.getElementById('btn-reset').onclick = () => {
+                    phase = 1;
+                    canvas.width = imgCanvas.width; canvas.height = imgCanvas.height;
+                    document.getElementById('btn-next').style.display = 'inline-block';
+                    document.getElementById('btn-reset').style.display = 'none';
+                    document.getElementById('result-area').style.display = 'none';
+                    document.getElementById('msg').innerText = "📍 第一階段：拉動四個藍點，對齊卡牌「最外邊框」";
+                    document.getElementById('sub-msg').innerText = "這能修正拍照傾斜，提升後續判定精準度";
+                    draw();
+                };
+
+                // 結果計算邏輯
+                function calculateResult() {
+                    let leftM = lines.lx;
+                    let rightM = canvas.width - lines.rx;
+                    let topM = lines.ty;
+                    let bottomM = canvas.height - lines.by;
+
+                    let lr = (leftM / (leftM + rightM)) * 100 || 50;
+                    let tb = (topM / (topM + bottomM)) * 100 || 50;
+
+                    document.getElementById('result-text').innerText = 
+                        `左右置中 (L/R): ${lr.toFixed(1)} / ${(100-lr).toFixed(1)} | 上下置中 (T/B): ${tb.toFixed(1)} / ${(100-tb).toFixed(1)}`;
+
+                    let stat = document.getElementById('status');
+                    if (lr >= 45.5 && lr <= 54.5 && tb >= 45.5 && tb <= 54.5) {
+                        stat.innerHTML = "🏆 判定：完美置中 (符合 54.5/46.5 極致標準)";
+                        stat.style.color = "#2e7d32";
+                    } else if (lr >= 40 && lr <= 60 && tb >= 40 && tb <= 60) {
+                        stat.innerHTML = "⚠️ 判定：符合 PSA 10 寬容標準 (60/40)，但未達極致完美";
+                        stat.style.color = "#ff9800";
+                    } else {
+                        stat.innerHTML = "❌ 判定：未達 PSA 10 置中要求 (超過 60/40 極限)";
+                        stat.style.color = "#d32f2f";
+                    }
+                }
+
+                // 處理滑鼠與手指拖曳事件
+                function getPos(e) {
+                    let rect = canvas.getBoundingClientRect();
+                    let clientX = e.touches ? e.touches[0].clientX : e.clientX;
+                    let clientY = e.touches ? e.touches[0].clientY : e.clientY;
+                    // 乘上比例係數，修正 CSS 縮放導致的拖曳偏移問題
+                    return {
+                        x: (clientX - rect.left) * (canvas.width / rect.width),
+                        y: (clientY - rect.top) * (canvas.height / rect.height)
+                    };
+                }
+
+                function onDown(e) {
+                    let {x, y} = getPos(e);
+                    dragObj = null;
+                    if (phase === 1) {
+                        for (let i=0; i<4; i++) {
+                            if (Math.hypot(x - corners[i].x, y - corners[i].y) < 30) {
+                                dragObj = i; break;
+                            }
+                        }
+                    } else if (phase === 2) {
+                        let t = 20; // 判定範圍
+                        if (Math.abs(x - lines.lx) < t) dragObj = 'lx';
+                        else if (Math.abs(x - lines.rx) < t) dragObj = 'rx';
+                        else if (Math.abs(y - lines.ty) < t) dragObj = 'ty';
+                        else if (Math.abs(y - lines.by) < t) dragObj = 'by';
+                    }
+                    if (dragObj !== null && e.cancelable) e.preventDefault();
+                }
+
+                function onMove(e) {
+                    if (dragObj === null) return;
+                    let {x, y} = getPos(e);
+                    if (phase === 1) {
+                        corners[dragObj].x = x; corners[dragObj].y = y;
+                    } else if (phase === 2) {
+                        if (dragObj === 'lx') lines.lx = Math.max(0, Math.min(x, lines.rx - 10));
+                        if (dragObj === 'rx') lines.rx = Math.min(canvas.width, Math.max(x, lines.lx + 10));
+                        if (dragObj === 'ty') lines.ty = Math.max(0, Math.min(y, lines.by - 10));
+                        if (dragObj === 'by') lines.by = Math.min(canvas.height, Math.max(y, lines.ty + 10));
+                    }
+                    draw();
+                    if (e.cancelable) e.preventDefault(); // 拖曳時防止網頁捲動
+                }
+
+                function onUp() { dragObj = null; }
+
+                canvas.addEventListener('mousedown', onDown);
+                canvas.addEventListener('mousemove', onMove);
+                window.addEventListener('mouseup', onUp);
+                canvas.addEventListener('touchstart', onDown, {passive: false});
+                canvas.addEventListener('touchmove', onMove, {passive: false});
+                window.addEventListener('touchend', onUp);
+            </script>
+        </body>
+        </html>
         """
         
-        # 渲染前端組件，高度設定為 800px 確保畫布完整顯示
-        components.html(html_code, height=800)
+        # 執行字串替換，並將高度設為 1000 確保畫布有充足空間顯示
+        html_code = html_template.replace("___IMG_URI___", img_uri)
+        components.html(html_code, height=1000)
