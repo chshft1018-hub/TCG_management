@@ -87,7 +87,7 @@ elif page == "卡牌分析":
         fig = create_combined_chart(res['data_A'], res['data_PSA'], "走勢比較")
         st.plotly_chart(fig, use_container_width=True)
 
-# 3. 投資分析
+# 3. 投資分析 (升級：RSI + 乖離率 雙重過濾策略)
 elif page == "投資分析":
     st.title("📈 進階投資分析")
     
@@ -95,22 +95,48 @@ elif page == "投資分析":
     if res:
         metrics = calculate_investment_metrics(res['data_PSA'], res['cost'])
         if metrics:
-            st.subheader("針對最新查詢卡牌之計量策略預測")
+            st.subheader(f"針對【{res['name']}】之計量策略預測")
+            
+            # 提取關鍵指標
+            rsi_val = metrics['rsi']
+            bias_rate = metrics['bias_rate']
             
             # 第一排：趨勢與動能
             c1, c2, c3 = st.columns(3)
             c1.metric("60日指數均價 (EMA)", f"NT${metrics['ema_60']:,.0f}")
-            c2.metric("乖離率", f"{metrics['bias_rate']:.2f}%")
+            c2.metric("乖離率", f"{bias_rate:.2f}%")
+            c3.metric("RSI (14) 市場情緒", f"{rsi_val:.1f}")
             
-            # 根據 RSI 給予不同顏色的市場情緒提示
-            rsi_val = metrics['rsi']
-            if rsi_val >= 70:
-                rsi_status = "🔴 超買 (高風險)"
-            elif rsi_val <= 30:
-                rsi_status = "🟢 超賣 (反彈契機)"
+            # --- 雙重指標策略邏輯 (Double Confirmation) ---
+            st.markdown("### 💡 AI 投資策略建議")
+            
+            # 1. 極端超買 (強烈賣出)
+            if rsi_val >= 70 and bias_rate >= 20:
+                st.error("**🔴 強烈賣出訊號 (極度超買 + 嚴重乖離)**\n\n指標顯示目前市場陷入非理性追高，且價格已嚴重脫離60日均線（乖離率>20%）。建議**分批獲利了結**，切勿在此時追高進場，高機率面臨大幅回檔。")
+            
+            # 2. 一般超買 (調節)
+            elif rsi_val >= 70 and bias_rate < 20:
+                st.warning("**🟠 調節訊號 (市場過熱)**\n\n市場情緒狂熱 (RSI>70)，但價格尚未完全脫離均線引力。可考慮適度調節持倉鎖定利潤，或提高停利點防守。")
+            
+            # 3. 極端超賣 (強烈買進)
+            elif rsi_val <= 30 and bias_rate <= -20:
+                st.success("**🟢 強烈買進訊號 (極度超賣 + 深度折價)**\n\n市場出現恐慌性拋售，不僅情緒冰點，價格更深跌至長期均線下方（乖離率<-20%）。這通常是絕佳的**「黃金坑」**，強烈建議逢低建立底倉。")
+            
+            # 4. 一般超賣 (佈局)
+            elif rsi_val <= 30 and bias_rate > -20:
+                st.info("**🔵 佈局訊號 (情緒悲觀)**\n\n市場情緒過度悲觀 (RSI<30)，浮現撿便宜機會。由於乖離尚未極端，建議採取**「定時定額 / 網格分批」**方式緩步進場。")
+            
+            # 5. 中性偏高
+            elif 30 < rsi_val < 70 and bias_rate >= 15:
+                st.warning("**🟡 觀望訊號 (價格偏高)**\n\n市場情緒雖然中性，但目前價格相對於均線稍嫌偏高（乖離較大），追高風險增加，建議等待價格回落靠近均線再行佈局。")
+            
+            # 6. 中性偏低
+            elif 30 < rsi_val < 70 and bias_rate <= -15:
+                st.info("**🟡 觀望訊號 (跌深盤整)**\n\n情緒中性但價格處於低檔區間。這代表賣壓已減輕但買盤尚未進駐，建議確認底部支撐（或等放量）後再進場。")
+            
+            # 7. 絕對中性
             else:
-                rsi_status = "🟡 中性盤整"
-            c3.metric("RSI (14) 市場情緒", f"{rsi_val:.1f}", delta=rsi_status, delta_color="off")
+                st.info("**⚖️ 中性盤整 (持倉觀望)**\n\n目前多空交戰，價格貼近均線且情緒平穩，處於健康震盪區間。建議保持現有倉位不動，靜待明確的趨勢突破。")
             
             st.markdown("---")
             
