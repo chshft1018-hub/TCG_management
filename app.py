@@ -26,9 +26,13 @@ if page == "卡牌分析":
         col1, col2 = st.columns(2)
         with col1:
             product_id = st.text_input("商品 ID", value='826553')
-            search_input = st.text_input("關鍵字搜尋 (選填)")
-            if search_input:
-                st.markdown(f"[前往 SNKRDUNK 搜尋]({'https://snkrdunk.com/search?keywords=' + search_input.replace(' ', '+'))}")
+            search_input = st.text_input("輸入關鍵字 (例如: M2a 223/193)")
+    if search_input:
+        # 將搜尋處理與 URL 組裝分開，避免 F-string 括號地獄
+        query = search_input.replace(' ', '+').replace('/', '%2F')
+        search_url = f"https://snkrdunk.com/search?keywords={query}"
+        # 這裡的括號現在完全對稱了
+        st.markdown(f"[前往 SNKRDUNK 搜尋]({search_url})")
         with col2:
             cost = st.number_input("持有成本 (NT$)", value=10000.0)
             analyze_btn = st.button("🚀 執行卡牌分析")
