@@ -13,36 +13,45 @@ if 'card_library' not in st.session_state: st.session_state['card_library'] = lo
 if 'last_analysis' not in st.session_state: st.session_state['last_analysis'] = None
 if 'psa_data' not in st.session_state: st.session_state['psa_data'] = None
 
-# --- 側邊欄：導航與全域功能 ---
+# 【關鍵修正】新增頁面路由的 Session 狀態，讓按鈕可以控制跳轉
+if 'current_page' not in st.session_state:
+    st.session_state['current_page'] = "首頁"
+
+# --- 側邊欄：導航 ---
 with st.sidebar:
     st.header("功能導航")
-    page = st.radio("請選擇功能", ["首頁", "卡牌分析", "投資分析", "卡牌庫"])
-    
-    st.markdown("---")
-    
-    # 將 PSA 查詢功能固定在側邊欄下方
-    st.header("🛡️ PSA POP 查詢")
-    cert_input = st.text_input("輸入 PSA 網址或編號")
-    if st.button("查詢 PSA 數據"):
-        with st.spinner("解析中..."):
-            url = cert_input if cert_input.startswith("http") else f"https://www.psacard.com/cert/{cert_input}/psa"
-            st.session_state['psa_data'] = get_psa_pop_from_cert_url(url)
-            st.success("查詢完成！請至「卡牌分析」頁面查看結果。")
+    # 將 radio 綁定到 session_state['current_page']
+    st.radio("請選擇功能", ["首頁", "卡牌分析", "投資分析", "卡牌庫", "PSA 查詢"], key="current_page")
+
+# 獲取當前頁面
+page = st.session_state['current_page']
 
 # --- 主要頁面邏輯 ---
 
+# 1. 首頁 (Dashboard)
 if page == "首頁":
     st.title("歡迎使用卡牌投資管理系統")
     st.write("請選擇下方按鈕進入對應功能：")
-    c1, c2, c3 = st.columns(3)
-    if c1.button("📊 前往卡牌分析"): st.session_state.page = "卡牌分析"; st.rerun()
-    if c2.button("📈 前往投資分析"): st.session_state.page = "投資分析"; st.rerun()
-    if c3.button("📂 前往卡牌庫"): st.session_state.page = "卡牌庫"; st.rerun()
+    
+    # 建立 4 個欄位放置按鈕
+    c1, c2, c3, c4 = st.columns(4)
+    if c1.button("📊 前往卡牌分析", use_container_width=True): 
+        st.session_state['current_page'] = "卡牌分析"
+        st.rerun()
+    if c2.button("📈 前往投資分析", use_container_width=True): 
+        st.session_state['current_page'] = "投資分析"
+        st.rerun()
+    if c3.button("📂 前往卡牌庫", use_container_width=True): 
+        st.session_state['current_page'] = "卡牌庫"
+        st.rerun()
+    if c4.button("🛡️ 前往 PSA 查詢", use_container_width=True): 
+        st.session_state['current_page'] = "PSA 查詢"
+        st.rerun()
 
+# 2. 卡牌分析
 elif page == "卡牌分析":
     st.title("📊 卡牌分析中心")
     
-    # 集中定義所有輸入元件
     with st.expander("🔍 搜尋與分析設定", expanded=True):
         col1, col2 = st.columns(2)
         with col1:
@@ -55,7 +64,6 @@ elif page == "卡牌分析":
             cost = st.number_input("持有成本 (NT$)", value=10000.0)
             analyze_btn = st.button("🚀 執行卡牌分析")
 
-    # 執行分析後顯示結果
     if analyze_btn:
         with st.spinner('正在獲取數據...'):
             loop = asyncio.new_event_loop()
@@ -72,35 +80,20 @@ elif page == "卡牌分析":
     if res:
         st.subheader(f"當前分析：{res['name']}")
         
-        # 顯示 PSA 查詢結果 (如果有的話)
-        if st.session_state['psa_data'] and isinstance(st.session_state['psa_data'], dict):
-            st.markdown("### PSA 鑑定數據")
-            p1, p2 = st.columns(2)
-            p1.metric("總鑑定數量 (Total Pop)", st.session_state['psa_data'].get('total', '0'))
-            p2.metric("高於此卡數量 (Pop Higher)", st.session_state['psa_data'].get('higher', '0'))
-            st.markdown("---")
-        
         if st.button("💾 存入卡牌庫"):
             new_data = {"名稱": res['name'], "成本": float(res['cost']), "ROI": f"{((res['m_PSA']['latest']-res['cost'])/res['cost']*100):.2f}%"}
             st.session_state['card_library'].append(new_data)
             update_google_sheet(st.session_state['card_library'])
+            st.session_state['card_library'] = load_google_sheet()
             st.success("已同步至 Google Sheets")
             
         fig = create_combined_chart(res['data_A'], res['data_PSA'], "走勢比較")
         st.plotly_chart(fig, use_container_width=True)
 
-elif page == "卡牌庫":
-    st.title("📂 卡牌庫")
-    df = pd.DataFrame(load_google_sheet())
-    if not df.empty: 
-        st.dataframe(df, use_container_width=True)
-    else: 
-        st.info("無庫存資料")
-
+# 3. 投資分析
 elif page == "投資分析":
     st.title("📈 進階投資分析")
     
-    # 這裡保留針對單一卡牌的 60 天預測面板
     res = st.session_state.get('last_analysis')
     if res:
         metrics = calculate_investment_metrics(res['data_PSA'], res['cost'])
@@ -115,8 +108,6 @@ elif page == "投資分析":
             st.warning("數據不足，無法產生 60 天預測指標。")
     
     st.markdown("---")
-    
-    # 整體投資組合總覽
     if st.button("🔄 計算整體組合績效"):
         df = pd.DataFrame(load_google_sheet())
         if not df.empty:
@@ -124,3 +115,35 @@ elif page == "投資分析":
             st.dataframe(df, use_container_width=True)
         else: 
             st.warning("請先在卡牌分析頁面存入卡牌。")
+
+# 4. 卡牌庫
+elif page == "卡牌庫":
+    st.title("📂 卡牌庫")
+    df = pd.DataFrame(load_google_sheet())
+    if not df.empty: 
+        st.dataframe(df, use_container_width=True)
+    else: 
+        st.info("無庫存資料")
+
+# 5. PSA 查詢 (全新獨立頁面)
+elif page == "PSA 查詢":
+    st.title("🛡️ PSA POP 查詢")
+    st.write("請輸入 PSA 鑑定網址或憑證編號以獲取卡牌的 Population 數據。")
+    
+    with st.container(border=True):
+        cert_input = st.text_input("輸入 PSA 網址或編號")
+        if st.button("查詢 PSA 數據"):
+            with st.spinner("解析中..."):
+                url = cert_input if cert_input.startswith("http") else f"https://www.psacard.com/cert/{cert_input}/psa"
+                st.session_state['psa_data'] = get_psa_pop_from_cert_url(url)
+    
+    # 顯示查詢結果
+    if st.session_state.get('psa_data'):
+        if isinstance(st.session_state['psa_data'], dict):
+            st.success("✅ 查詢成功！")
+            p1, p2 = st.columns(2)
+            p1.metric("總鑑定數量 (Total Pop)", st.session_state['psa_data'].get('total', '0'))
+            p2.metric("高於此卡數量 (Pop Higher)", st.session_state['psa_data'].get('higher', '0'))
+        else:
+            # 顯示錯誤訊息 (如被擋或找不到)
+            st.error(st.session_state['psa_data'])
