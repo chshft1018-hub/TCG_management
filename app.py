@@ -13,18 +13,24 @@ if 'card_library' not in st.session_state: st.session_state['card_library'] = lo
 if 'last_analysis' not in st.session_state: st.session_state['last_analysis'] = None
 if 'psa_data' not in st.session_state: st.session_state['psa_data'] = None
 
-# 【關鍵修正】新增頁面路由的 Session 狀態，讓按鈕可以控制跳轉
+# 初始化當前頁面
 if 'current_page' not in st.session_state:
     st.session_state['current_page'] = "首頁"
+
+# --- 定義導航回呼函式 (Callback) ---
+# 這是解決 API Exception 的關鍵，讓狀態更新在畫面重繪之前完成
+def navigate_to(page_name):
+    st.session_state['current_page'] = page_name
 
 # --- 側邊欄：導航 ---
 with st.sidebar:
     st.header("功能導航")
     # 將 radio 綁定到 session_state['current_page']
-    st.radio("請選擇功能", ["首頁", "卡牌分析", "投資分析", "卡牌庫", "PSA 查詢"], key="current_page")
-
-# 獲取當前頁面
-page = st.session_state['current_page']
+    page = st.radio(
+        "請選擇功能", 
+        ["首頁", "卡牌分析", "投資分析", "卡牌庫", "PSA 查詢"], 
+        key="current_page"
+    )
 
 # --- 主要頁面邏輯 ---
 
@@ -33,20 +39,12 @@ if page == "首頁":
     st.title("歡迎使用卡牌投資管理系統")
     st.write("請選擇下方按鈕進入對應功能：")
     
-    # 建立 4 個欄位放置按鈕
+    # 建立 4 個欄位放置按鈕，並綁定 on_click 事件
     c1, c2, c3, c4 = st.columns(4)
-    if c1.button("📊 前往卡牌分析", use_container_width=True): 
-        st.session_state['current_page'] = "卡牌分析"
-        st.rerun()
-    if c2.button("📈 前往投資分析", use_container_width=True): 
-        st.session_state['current_page'] = "投資分析"
-        st.rerun()
-    if c3.button("📂 前往卡牌庫", use_container_width=True): 
-        st.session_state['current_page'] = "卡牌庫"
-        st.rerun()
-    if c4.button("🛡️ 前往 PSA 查詢", use_container_width=True): 
-        st.session_state['current_page'] = "PSA 查詢"
-        st.rerun()
+    c1.button("📊 前往卡牌分析", use_container_width=True, on_click=navigate_to, args=("卡牌分析",))
+    c2.button("📈 前往投資分析", use_container_width=True, on_click=navigate_to, args=("投資分析",))
+    c3.button("📂 前往卡牌庫", use_container_width=True, on_click=navigate_to, args=("卡牌庫",))
+    c4.button("🛡️ 前往 PSA 查詢", use_container_width=True, on_click=navigate_to, args=("PSA 查詢",))
 
 # 2. 卡牌分析
 elif page == "卡牌分析":
@@ -125,7 +123,7 @@ elif page == "卡牌庫":
     else: 
         st.info("無庫存資料")
 
-# 5. PSA 查詢 (全新獨立頁面)
+# 5. PSA 查詢
 elif page == "PSA 查詢":
     st.title("🛡️ PSA POP 查詢")
     st.write("請輸入 PSA 鑑定網址或憑證編號以獲取卡牌的 Population 數據。")
@@ -145,5 +143,4 @@ elif page == "PSA 查詢":
             p1.metric("總鑑定數量 (Total Pop)", st.session_state['psa_data'].get('total', '0'))
             p2.metric("高於此卡數量 (Pop Higher)", st.session_state['psa_data'].get('higher', '0'))
         else:
-            # 顯示錯誤訊息 (如被擋或找不到)
             st.error(st.session_state['psa_data'])
