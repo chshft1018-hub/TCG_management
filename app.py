@@ -16,7 +16,7 @@ if 'card_library' not in st.session_state: st.session_state['card_library'] = lo
 if 'last_analysis' not in st.session_state: st.session_state['last_analysis'] = None
 if 'psa_data' not in st.session_state: st.session_state['psa_data'] = None
 if 'current_page' not in st.session_state: st.session_state['current_page'] = "首頁"
-def navigate_to(page_name):
+def navigate_to (page_name):
 st.session_state['current_page'] = page_name
 with st.sidebar:
 st.header("功能導航")
