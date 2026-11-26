@@ -33,14 +33,14 @@ c4.button("📏 前往置中檢測", use_container_width=True, on_click=navigate
 c5.button("📂 前往卡牌庫", use_container_width=True, on_click=navigate_to, args=("卡牌庫",))
 # 2. 卡牌分析
 elif page == "卡牌分析":
-st.title("📊 卡牌分析中心")
+   st.title("📊 卡牌分析中心")
 with st.expander("🔍 搜尋與分析設定", expanded=True):
 col1, col2 = st.columns(2)
 with col1:
 search_input = st.text_input("輸入關鍵字 (例如: M2a 223/193)")
 if search_input:
 query = search_input.replace(' ', '+').replace('/', '%2F')
-st.markdown(f"[前往 SNKRDUNK 搜尋](https://snkrdunk.com/search?keywords={query})")
+   st.markdown(f"[前往 SNKRDUNK 搜尋](https://snkrdunk.com/search?keywords={query})")
 product_id = st.text_input("商品 ID", value='826553')
 with col2:
 cost = st.number_input("持有成本 (NT$)", value=10000.0)
