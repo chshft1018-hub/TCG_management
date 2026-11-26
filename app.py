@@ -174,10 +174,16 @@ elif page == "PSA 查詢":
         else:
             st.error(st.session_state['psa_data'])
 
-# 6. 置中檢測 (原生 Python 影像處理版)
+# 6. 置中檢測 (TAG 邊界基準版)
 elif page == "置中檢測":
-    st.title("📏 專業級卡牌置中檢測 (PSA 10 模擬)")
-    st.markdown("請上傳卡牌正面影像。系統採用二階段判定：**1. 拖拉藍點校正外框透視** ➡️ **2. 拖拉紅線判定內框比例**。")
+    st.title("📏 專業級卡牌置中檢測 (TAG / PSA 嚴格標準)")
+    st.markdown("""
+    請上傳卡牌正/背面影像。系統採用二階段判定：
+    1. **校正外框透視：** 拖拉藍點對齊卡牌「物理最外邊緣」。
+    2. **標定 TAG 測量錨點：** 拖拉紅線對齊內部基準線。
+       - **全圖卡 (Front)：** 請對齊「**連續性 UI 裝飾框架的最外圍邊界**」（勿單看文字或圖示中心）。
+       - **航海王卡背 (Back)：** 請對齊「**深藍色實心外框與內部淺色網格圖騰的交界線**」。
+    """)
     
     uploaded_file = st.file_uploader("上傳卡牌圖片", type=["jpg", "jpeg", "png"])
     
@@ -265,8 +271,8 @@ elif page == "置中檢測":
                         ];
 
                         phase = 1;
-                        document.getElementById('msg').innerText = "📍 第一階段：拉動四個藍點，對齊卡牌「最外邊框」";
-                        document.getElementById('sub-msg').innerText = "這能修正拍照傾斜，提升後續判定精準度";
+                        document.getElementById('msg').innerText = "📍 第一階段：拉動四個藍點，對齊卡牌「物理最外邊框」";
+                        document.getElementById('sub-msg').innerText = "這能修正拍照透視傾斜 (轉換為標準 630x880 比例)";
                         document.getElementById('btn-next').style.display = "inline-block";
                         
                         draw();
@@ -317,7 +323,7 @@ elif page == "置中檢測":
                         corners[2].x, corners[2].y, corners[3].x, corners[3].y
                     ]);
 
-                    // 標準卡牌比例 63x88 -> 建立 504x704 的畫布
+                    // 標準卡牌比例 63x88 -> 建立 504x704 的畫布 (維持高解析)
                     let cardW = 504, cardH = 704;
                     let dstTri = cv.matFromArray(4, 1, cv.CV_32FC2, [
                         0, 0, cardW, 0, cardW, cardH, 0, cardH
@@ -340,8 +346,8 @@ elif page == "置中檢測":
                     document.getElementById('btn-next').style.display = 'none';
                     document.getElementById('btn-reset').style.display = 'inline-block';
                     document.getElementById('result-area').style.display = 'block';
-                    document.getElementById('msg').innerText = "📍 第二階段：自由拖動四條紅線，對齊卡牌「原畫像」";
-                    document.getElementById('sub-msg').innerHTML = "目前標準為最嚴格的極致 <strong>54.5 / 46.5</strong>";
+                    document.getElementById('msg').innerText = "📍 第二階段：拖動四條紅線，對齊「TAG 測量錨點 (Bounding Box)」";
+                    document.getElementById('sub-msg').innerHTML = "正面對齊 UI 裝飾外框；背面對齊圖騰交界。TAG 10 / Pristine 嚴格標準為 <strong><= 53/47</strong>";
                     draw();
                 };
 
@@ -351,12 +357,12 @@ elif page == "置中檢測":
                     document.getElementById('btn-next').style.display = 'inline-block';
                     document.getElementById('btn-reset').style.display = 'none';
                     document.getElementById('result-area').style.display = 'none';
-                    document.getElementById('msg').innerText = "📍 第一階段：拉動四個藍點，對齊卡牌「最外邊框」";
-                    document.getElementById('sub-msg').innerText = "這能修正拍照傾斜，提升後續判定精準度";
+                    document.getElementById('msg').innerText = "📍 第一階段：拉動四個藍點，對齊卡牌「物理最外邊框」";
+                    document.getElementById('sub-msg').innerText = "這能修正拍照透視傾斜 (轉換為標準 630x880 比例)";
                     draw();
                 };
 
-                // 結果計算邏輯
+                // 結果計算邏輯 (導入 TAG / Pristine 嚴格演算法)
                 function calculateResult() {
                     let leftM = lines.lx;
                     let rightM = canvas.width - lines.rx;
@@ -367,17 +373,28 @@ elif page == "置中檢測":
                     let tb = (topM / (topM + bottomM)) * 100 || 50;
 
                     document.getElementById('result-text').innerText = 
-                        `左右置中 (L/R): ${lr.toFixed(1)} / ${(100-lr).toFixed(1)} | 上下置中 (T/B): ${tb.toFixed(1)} / ${(100-tb).toFixed(1)}`;
+                        `左右置中 (L/R): ${lr.toFixed(2)} / ${(100-lr).toFixed(2)} | 上下置中 (T/B): ${tb.toFixed(2)} / ${(100-tb).toFixed(2)}`;
 
+                    let lrMax = Math.max(lr, 100 - lr);
+                    let tbMax = Math.max(tb, 100 - tb);
+                    let worstRatio = Math.max(lrMax, tbMax);
+                    
                     let stat = document.getElementById('status');
-                    if (lr >= 45.5 && lr <= 54.5 && tb >= 45.5 && tb <= 54.5) {
-                        stat.innerHTML = "🏆 判定：完美置中 (符合 54.5/46.5 極致標準)";
+                    
+                    if (worstRatio <= 50.00) {
+                        stat.innerHTML = "🏆 判定：BGS 10 黑標 / TAG 10 Pristine (極致完美 50/50)";
+                        stat.style.color = "#d4af37"; // 黑標金
+                    } else if (worstRatio <= 53.00) {
+                        stat.innerHTML = "✨ 判定：TAG 10 / CGC 10 Pristine (符合 <= 53/47 嚴格邊界標準)";
                         stat.style.color = "#2e7d32";
-                    } else if (lr >= 40 && lr <= 60 && tb >= 40 && tb <= 60) {
-                        stat.innerHTML = "⚠️ 判定：符合 PSA 10 寬容標準 (60/40)，但未達極致完美";
+                    } else if (worstRatio <= 55.00) {
+                        stat.innerHTML = "✅ 判定：PSA 10 Gem Mint / BGS 9.5 (符合 <= 55/45 標準)";
+                        stat.style.color = "#1565c0";
+                    } else if (worstRatio <= 60.00) {
+                        stat.innerHTML = "⚠️ 判定：符合 PSA 10 寬容極限 (最寬 60/40) 或卡背標準";
                         stat.style.color = "#ff9800";
                     } else {
-                        stat.innerHTML = "❌ 判定：未達 PSA 10 置中要求 (超過 60/40 極限)";
+                        stat.innerHTML = "❌ 判定：未達 Gem Mint 置中要求 (超過 60/40 極限)";
                         stat.style.color = "#d32f2f";
                     }
                 }
