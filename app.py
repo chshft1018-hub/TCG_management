@@ -216,20 +216,7 @@ elif page == "置中檢測":
             <head>
               <meta charset="utf-8">
               <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-              <!-- 強制全域初始化與最穩定的 jsdelivr CDN -->
-              <script>
-                  var Module = {
-                      onRuntimeInitialized: function() {
-                          window.cvReady = true;
-                          var loadingEl = document.getElementById('loading');
-                          if(loadingEl) {
-                              loadingEl.style.display = 'none';
-                              document.getElementById('main-ui').style.display = 'flex';
-                              if (typeof runFocusDetect === 'function' && window.imgMat) { runFocusDetect(); }
-                          }
-                      }
-                  };
-              </script>
+              <!-- 使用 jsdelivr CDN 載入 OpenCV -->
               <script async src="https://cdn.jsdelivr.net/npm/@techstark/opencv-js@4.8.0/build/opencv.min.js"></script>
               <style>
                 /* --- Global Settings --- */
@@ -327,6 +314,7 @@ elif page == "置中檢測":
 
             <script>
               const imgUri = "___IMG_URI___";
+              let cvReady = false;
               let imgMat = null, warpedMat = null, currentStep = 0;
               let corners = [], guides = { outL:0, outR:1, outT:0, outB:1, inL:0.1, inR:0.9, inT:0.1, inB:0.9 };
               const PADDING_RATIO = 0.05; 
@@ -334,12 +322,25 @@ elif page == "置中檢測":
               const canvas = document.getElementById('cvCanvas');
               const overlay = document.getElementById('overlay');
 
-              // 不依賴 DOM FileUpload，直接使用傳入的 Base64 繪圖
-              const img = new Image();
-              img.onload = () => {
-                setupImage(img);
-              };
-              img.src = imgUri;
+              // 使用輪詢機制檢查 OpenCV 是否載入完成，不再依賴 onRuntimeInitialized
+              function checkCvReady() {
+                  if (typeof cv !== 'undefined' && typeof cv.Mat !== 'undefined') {
+                      cvReady = true;
+                      document.getElementById('loading').style.display = 'none';
+                      document.getElementById('main-ui').style.display = 'flex';
+                      
+                      // OpenCV 載入完成後，才開始讀取圖片並進行處理
+                      const img = new Image();
+                      img.onload = () => {
+                        setupImage(img);
+                      };
+                      img.src = imgUri;
+                  } else {
+                      setTimeout(checkCvReady, 100); // 每 100ms 檢查一次
+                  }
+              }
+              // 啟動輪詢
+              checkCvReady();
 
               function setupImage(img) {
                 resetAll(false);
@@ -350,14 +351,8 @@ elif page == "置中檢測":
                 const ctx = canvas.getContext('2d');
                 ctx.drawImage(img, 0, 0, w, h);
 
-                // 檢查 OpenCV 是否就緒
-                if (!window.cvReady) {
-                    setTimeout(() => setupImage(img), 500);
-                    return;
-                }
-
                 if(imgMat) imgMat.delete();
-                // 為了避免 iframe 中找不到虛擬畫布，改用 getImageData 抓像素
+                // 使用 getImageData 抓像素，避免直接讀虛擬畫布造成破圖
                 let imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
                 imgMat = cv.matFromImageData(imgData);
 
@@ -371,7 +366,7 @@ elif page == "置中檢測":
 
               // --- Step 1: Focused Detect (ROI) ---
               function runFocusDetect() {
-                if(!imgMat || !window.cvReady) return;
+                if(!imgMat || !cvReady) return;
                 const status = document.getElementById('status-msg');
                 status.innerText = "🔍 Scanning...";
                 status.style.color = "#b388ff";
@@ -450,7 +445,7 @@ elif page == "置中檢測":
 
               // --- Step 2: Warp & Init Guides ---
               function processWarp() {
-                if(!imgMat || !window.cvReady) return;
+                if(!imgMat || !cvReady) return;
                 
                 try {
                     let srcPts = cv.matFromArray(4, 1, cv.CV_32FC2, [
@@ -504,7 +499,7 @@ elif page == "置中檢測":
               }
 
               function runAutoDetectInner() {
-                if(!warpedMat || !window.cvReady) return;
+                if(!warpedMat || !cvReady) return;
                 const status = document.getElementById('status-msg');
                 status.innerText = "⚡ Aligning Inner Frame...";
                 status.style.color = "#00e5ff";
@@ -583,7 +578,7 @@ elif page == "置中檢測":
               }
 
               function drawPoly() {
-                if(!imgMat || !window.cvReady) return; 
+                if(!imgMat || !cvReady) return; 
                 cv.imshow('cvCanvas', imgMat);
                 const ctx = canvas.getContext('2d'), s = getScale();
                 ctx.beginPath(); ctx.lineWidth = 2*s; ctx.strokeStyle = '#ff5252';
@@ -673,7 +668,7 @@ elif page == "置中檢測":
               function resetAll(full) {
                 if(full) { 
                     currentStep = 0; 
-                    if(imgMat && window.cvReady){cv.imshow('cvCanvas', imgMat); renderOverlay();} 
+                    if(imgMat && cvReady){cv.imshow('cvCanvas', imgMat); renderOverlay();} 
                     updateUI(); 
                 }
               }
