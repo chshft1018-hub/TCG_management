@@ -181,7 +181,8 @@ elif page == "置中檢測":
     請上傳卡牌正/背面影像。系統採用二階段判定：
     1. **校正外框透視：** 拖拉藍點對齊卡牌「物理最外邊緣」。
     2. **標定 TAG 測量錨點：** 拖拉紅線對齊內部基準線。
-       - **全圖卡 (Front)：** 請對齊「**連續性 UI 裝飾框架的最外圍邊界**」（勿單看文字或圖示中心）。
+       - **無邊框卡/全圖卡 (Front)：** 請對齊「**連續性 UI 裝飾框架的最外圍邊界**」（勿單看文字或圖示中心）。
+       - **實體邊框卡 (Front)：** 直接對齊實體印製外框。
        - **航海王卡背 (Back)：** 請對齊「**深藍色實心外框與內部淺色網格圖騰的交界線**」。
     """)
     
@@ -346,8 +347,8 @@ elif page == "置中檢測":
                     document.getElementById('btn-next').style.display = 'none';
                     document.getElementById('btn-reset').style.display = 'inline-block';
                     document.getElementById('result-area').style.display = 'block';
-                    document.getElementById('msg').innerText = "📍 第二階段：拖動四條紅線，對齊「TAG 測量錨點 (Bounding Box)」";
-                    document.getElementById('sub-msg').innerHTML = "正面對齊 UI 裝飾外框；背面對齊圖騰交界。TAG 10 / Pristine 嚴格標準為 <strong><= 53/47</strong>";
+                    document.getElementById('msg').innerText = "📍 第二階段：拖動四條紅線，對齊「測量錨點 (Bounding Box)」";
+                    document.getElementById('sub-msg').innerHTML = "實體邊框對齊實心印製線；無邊框對齊裝飾外緣。TAG Pristine 10 嚴格標準為 <strong>&lt; 51/49</strong>";
                     draw();
                 };
 
@@ -382,10 +383,10 @@ elif page == "置中檢測":
                     let stat = document.getElementById('status');
                     
                     if (worstRatio <= 50.00) {
-                        stat.innerHTML = "🏆 判定：BGS 10 黑標 / TAG 10 Pristine (極致完美 50/50)";
+                        stat.innerHTML = "🏆 判定：BGS 10 黑標 (極致完美 50/50)";
                         stat.style.color = "#d4af37"; // 黑標金
-                    } else if (worstRatio <= 53.00) {
-                        stat.innerHTML = "✨ 判定：TAG 10 / CGC 10 Pristine (符合 <= 53/47 嚴格邊界標準)";
+                    } else if (worstRatio < 51.00) {
+                        stat.innerHTML = "✨ 判定：TAG 10 Pristine / CGC 10 Pristine (符合 < 51/49 嚴格邊界標準)";
                         stat.style.color = "#2e7d32";
                     } else if (worstRatio <= 55.00) {
                         stat.innerHTML = "✅ 判定：PSA 10 Gem Mint / BGS 9.5 (符合 <= 55/45 標準)";
