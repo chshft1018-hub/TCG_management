@@ -175,7 +175,7 @@ elif page == "PSA 查詢":
         else:
             st.error(st.session_state['psa_data'])
 
-# 6. 置中檢測 (徹底修復 Iframe 渲染版)
+# 6. 置中檢測 (徹底杜絕 Iframe 靜默報錯版)
 elif page == "置中檢測":
     st.title("📏 專業級卡牌置中檢測 (TAG / PSA 嚴格標準)")
     st.markdown("""
@@ -187,7 +187,6 @@ elif page == "置中檢測":
        - **航海王卡背 (Back)：** 請對齊「**深藍色實心外框與內部淺色網格圖騰的交界線**」。
     """)
     
-    # 允許多圖上傳
     uploaded_files = st.file_uploader("上傳卡牌圖片 (支援多張同步上傳)", type=["jpg", "jpeg", "png"], accept_multiple_files=True)
     
     if uploaded_files:
@@ -195,7 +194,6 @@ elif page == "置中檢測":
             st.subheader(f"檢測影像 {idx + 1}: {uploaded_file.name}")
             
             try:
-                # 記憶體內壓縮，確保圖片大小不會癱瘓瀏覽器
                 img_pil = Image.open(uploaded_file)
                 img_pil.thumbnail((1200, 1200), Image.Resampling.LANCZOS)
                 
@@ -210,18 +208,28 @@ elif page == "置中檢測":
                 st.error(f"圖片解析失敗: {e}")
                 continue
             
-            # HTML 模板：已移除 window.innerWidth 依賴，改用絕對比例限制
             html_template = """
             <!DOCTYPE html>
             <html>
             <head>
                 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-                <!-- 改用最穩定的 jsdelivr CDN 來源載入 OpenCV -->
+                <script>
+                    // 確保載入完成並賦予全域狀態
+                    var Module = {
+                        onRuntimeInitialized: function() {
+                            window.cvReady = true;
+                            var statusEl = document.getElementById('cv-status');
+                            if(statusEl) {
+                                statusEl.innerText = "🟢 透視引擎已就緒";
+                                statusEl.style.color = "#4CAF50";
+                            }
+                        }
+                    };
+                </script>
                 <script async src="https://cdn.jsdelivr.net/npm/@techstark/opencv-js@4.8.0/build/opencv.min.js"></script>
                 <style>
                     body { font-family: sans-serif; text-align: center; color: #333; margin: 0; padding: 10px; }
                     #canvas-container { display: inline-block; position: relative; margin-top: 10px; width: 100%; }
-                    /* CSS 讓畫布自動適應手機與電腦螢幕，避免 0x0 Bug */
                     canvas { border: 2px dashed #999; max-width: 100%; height: auto; touch-action: none; cursor: crosshair; }
                     .btn { padding: 12px 24px; font-size: 16px; font-weight: bold; color: white; background-color: #4CAF50; border: none; border-radius: 8px; cursor: pointer; margin: 5px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
                     .btn-reset { background-color: #f44336; }
@@ -264,25 +272,10 @@ elif page == "置中檢測":
                     let corners = [];
                     let lines = {};
                     let dragObj = null;
-                    let cvReady = false;
 
-                    // 背景輪詢 OpenCV 狀態，不阻擋圖片顯示
-                    function checkCV() {
-                        if (typeof cv !== 'undefined' && typeof cv.Mat !== 'undefined') {
-                            cvReady = true;
-                            let statusEl = document.getElementById('cv-status');
-                            statusEl.innerText = "🟢 透視引擎已就緒";
-                            statusEl.style.color = "#4CAF50";
-                        } else {
-                            setTimeout(checkCV, 500);
-                        }
-                    }
-                    checkCV();
-
-                    // 圖片讀取後「立刻」畫出，不用等 OpenCV
+                    // 圖片讀取後立刻畫出，不被 OpenCV 阻擋
                     img.onload = () => {
                         try {
-                            // 限制內部運算最大邊長 800px，完全捨棄有雷的 window.innerWidth
                             const scale = Math.min(800 / img.width, 800 / img.height, 1);
                             
                             imgCanvas.width = img.width * scale;
@@ -302,6 +295,7 @@ elif page == "置中檢測":
                             draw();
                         } catch (err) {
                             document.getElementById('msg').innerText = "❌ 圖片渲染失敗: " + err.message;
+                            document.getElementById('msg').style.color = "red";
                         }
                     };
                     img.src = imgUri;
@@ -338,13 +332,18 @@ elif page == "置中檢測":
                     }
 
                     document.getElementById('btn-next').onclick = () => {
-                        if (!cvReady) {
-                            alert("OpenCV 引擎尚未載入完成，請再等幾秒鐘！(若一直未就緒請重新整理網頁)");
+                        // 防呆與狀態檢查
+                        if (!window.cvReady) {
+                            document.getElementById('msg').innerText = "⏳ 引擎尚未就緒，請稍候...";
+                            document.getElementById('msg').style.color = "#ff9800";
                             return;
                         }
                         
                         try {
-                            let src = cv.imread(imgCanvas);
+                            // 【關鍵修復】改用 getImageData 抓像素，避免直接讀虛擬畫布造成破圖或閃退
+                            let ctxImg = imgCanvas.getContext('2d');
+                            let imgData = ctxImg.getImageData(0, 0, imgCanvas.width, imgCanvas.height);
+                            let src = cv.matFromImageData(imgData);
                             let dst = new cv.Mat();
                             
                             let srcTri = cv.matFromArray(4, 1, cv.CV_32FC2, [
@@ -360,7 +359,8 @@ elif page == "置中檢測":
                             let M = cv.getPerspectiveTransform(srcTri, dstTri);
                             cv.warpPerspective(src, dst, M, new cv.Size(cardW, cardH));
 
-                            warpedCanvas.width = cardW; warpedCanvas.height = cardH;
+                            warpedCanvas.width = cardW; 
+                            warpedCanvas.height = cardH;
                             cv.imshow(warpedCanvas, dst);
                             
                             src.delete(); dst.delete(); M.delete(); srcTri.delete(); dstTri.delete();
@@ -372,13 +372,16 @@ elif page == "置中檢測":
                             document.getElementById('btn-next').style.display = 'none';
                             document.getElementById('btn-reset').style.display = 'inline-block';
                             document.getElementById('result-area').style.display = 'block';
-                            document.getElementById('msg').innerText = "📍 第二階段：拖動四條紅線，對齊「測量錨點 (Bounding Box)」";
+                            
+                            document.getElementById('msg').innerText = "📍 第二階段：拖動四條紅線，對齊「測量錨點」";
                             document.getElementById('msg').style.color = "#d32f2f";
                             document.getElementById('sub-msg').innerHTML = "實體邊框對齊實心印製線；無邊框對齊裝飾外緣。TAG Pristine 10 嚴格標準為 <strong>&lt; 51/49</strong>";
                             
                             draw();
                         } catch (err) {
-                            alert("透視變形發生錯誤，請確認四個藍點是否形成正常四邊形。\\n" + err.message);
+                            // 【關鍵修復】將原本被阻擋的 alert 變成實體文字顯示
+                            document.getElementById('msg').innerText = "❌ 處理失敗: " + err.message;
+                            document.getElementById('msg').style.color = "red";
                         }
                     };
 
