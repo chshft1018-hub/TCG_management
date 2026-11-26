@@ -7,6 +7,7 @@ import numpy as np
 import base64
 import streamlit.components.v1 as components
 from PIL import Image
+from io import BytesIO
 from scraper import (get_chart_data, analyze_data, get_product_name, 
                      create_professional_chart, get_psa_pop_from_cert_url,
                      calculate_investment_metrics, create_combined_chart)
@@ -174,36 +175,52 @@ elif page == "PSA 查詢":
         else:
             st.error(st.session_state['psa_data'])
 
-# 6. 置中檢測 (TAG 邊界基準版 - 支援多圖與 OpenCV 修正)
+# 6. 置中檢測 (TAG 邊界基準版 - 修正 OpenCV 載入與圖片壓縮問題)
 elif page == "置中檢測":
     st.title("📏 專業級卡牌置中檢測 (TAG / PSA 嚴格標準)")
     st.markdown("""
     請上傳卡牌正/背面影像。系統採用二階段判定：
     1. **校正外框透視：** 拖拉藍點對齊卡牌「物理最外邊緣」。
     2. **標定 TAG 測量錨點：** 拖拉紅線對齊內部基準線。
-       - **無邊框卡/全圖卡 (Front)：** 請對齊「**連續性 UI 裝飾框架的最外圍邊界**」（勿單看文字或圖示中心）。
+       - **無邊框卡/全圖卡 (Front)：** 請對齊「**連續性 UI 裝飾框架的最外圍邊界**」。
        - **實體邊框卡 (Front)：** 直接對齊實體印製外框。
        - **航海王卡背 (Back)：** 請對齊「**深藍色實心外框與內部淺色網格圖騰的交界線**」。
     """)
     
-    # 修改 1：允許同時上傳多張圖片 (正、反面)
     uploaded_files = st.file_uploader("上傳卡牌圖片 (可同時上傳多張)", type=["jpg", "jpeg", "png"], accept_multiple_files=True)
     
     if uploaded_files:
-        # 修改 2：用迴圈處理每一張上傳的圖片，為每張圖建立獨立的檢測畫布
+        from io import BytesIO
+        
         for idx, uploaded_file in enumerate(uploaded_files):
             st.subheader(f"檢測影像 {idx + 1}: {uploaded_file.name}")
             
-            base64_img = base64.b64encode(uploaded_file.getvalue()).decode("utf-8")
-            img_uri = f"data:image/jpeg;base64,{base64_img}"
+            # 【重要修正】利用 PIL 進行圖片壓縮與縮放，避免 Base64 字串撐爆 Streamlit iframe
+            try:
+                img_pil = Image.open(uploaded_file)
+                # 限制最大長寬為 1200px，維持高品質濾鏡
+                img_pil.thumbnail((1200, 1200), Image.Resampling.LANCZOS)
+                
+                # 轉存為記憶體中的 JPEG，並壓縮品質
+                buffered = BytesIO()
+                # 若原本是 RGBA (如 PNG)，先轉為 RGB 才能存為 JPEG
+                if img_pil.mode in ("RGBA", "P"):
+                    img_pil = img_pil.convert("RGB")
+                img_pil.save(buffered, format="JPEG", quality=85)
+                
+                base64_img = base64.b64encode(buffered.getvalue()).decode("utf-8")
+                img_uri = f"data:image/jpeg;base64,{base64_img}"
+            except Exception as e:
+                st.error(f"圖片解析失敗: {e}")
+                continue
             
             # 純前端 HTML/JS 互動畫布模板
             html_template = """
             <!DOCTYPE html>
             <html>
             <head>
-                <!-- 修改 3：加入 onload 事件，確保 OpenCV.js 下載完成後才初始化 -->
-                <script async src="https://docs.opencv.org/4.8.0/opencv.js" onload="onOpenCvReady();" type="text/javascript"></script>
+                <!-- 【重要修正】改用 cdnjs 來源，且移除 onload 屬性 -->
+                <script src="https://cdnjs.cloudflare.com/ajax/libs/opencv.js/4.8.0/opencv.min.js"></script>
                 <style>
                     body { font-family: sans-serif; text-align: center; color: #333; margin: 0; padding: 10px; }
                     #canvas-container { display: inline-block; position: relative; margin-top: 10px; }
@@ -217,7 +234,7 @@ elif page == "置中檢測":
             </head>
             <body>
                 <h3 id="msg">🚀 影像處理引擎載入中...</h3>
-                <p id="sub-msg">請稍候，即將啟動互動校正畫布</p>
+                <p id="sub-msg">(若卡住超過 10 秒，請重整網頁)</p>
                 
                 <button id="btn-next" class="btn" style="display:none;">✅ 確認外框 (進行透視拉平)</button>
                 <button id="btn-reset" class="btn btn-reset" style="display:none;">🔄 重新校正外框</button>
@@ -245,47 +262,56 @@ elif page == "置中檢測":
                     let lines = {};
                     let dragObj = null;
 
-                    // 當 OpenCV.js 腳本下載完成時觸發
-                    function onOpenCvReady() {
-                        cv['onRuntimeInitialized']=()=>{
-                            initApp();
-                        };
-                        // 備用檢查：有些情況下 onRuntimeInitialized 不會觸發
-                        setTimeout(() => {
-                            if(typeof cv !== 'undefined' && phase === 0) {
+                    // 【重要修正】強制作動的輪詢機制 (Polling)
+                    function waitForOpenCV() {
+                        try {
+                            // 檢查 cv 是否存在，且核心函式是否已經載入完成
+                            if (typeof cv !== 'undefined' && typeof cv.Mat !== 'undefined') {
+                                document.getElementById('msg').innerText = "✅ 引擎載入成功，準備圖片...";
                                 initApp();
+                            } else {
+                                // 若未載入，0.5 秒後再檢查一次
+                                setTimeout(waitForOpenCV, 500);
                             }
-                        }, 1000);
+                        } catch (e) {
+                            setTimeout(waitForOpenCV, 500);
+                        }
                     }
 
                     function initApp() {
                         if(phase !== 0) return; // 避免重複執行
+                        
                         img.src = imgUri;
                         img.onload = () => {
-                            const maxW = window.innerWidth * 0.9;
-                            const maxH = window.innerHeight * 0.7;
-                            const scale = Math.min(maxW / img.width, maxH / img.height, 1);
-                            
-                            imgCanvas.width = img.width * scale;
-                            imgCanvas.height = img.height * scale;
-                            imgCanvas.getContext('2d').drawImage(img, 0, 0, imgCanvas.width, imgCanvas.height);
-                            
-                            canvas.width = imgCanvas.width;
-                            canvas.height = imgCanvas.height;
+                            try {
+                                const maxW = window.innerWidth * 0.9;
+                                const maxH = window.innerHeight * 0.7;
+                                const scale = Math.min(maxW / img.width, maxH / img.height, 1);
+                                
+                                imgCanvas.width = img.width * scale;
+                                imgCanvas.height = img.height * scale;
+                                imgCanvas.getContext('2d').drawImage(img, 0, 0, imgCanvas.width, imgCanvas.height);
+                                
+                                canvas.width = imgCanvas.width;
+                                canvas.height = imgCanvas.height;
 
-                            let w = canvas.width, h = canvas.height;
-                            let ix = w * 0.1, iy = h * 0.1;
-                            corners = [
-                                {x: ix, y: iy}, {x: w - ix, y: iy}, 
-                                {x: w - ix, y: h - iy}, {x: ix, y: h - iy}
-                            ];
+                                let w = canvas.width, h = canvas.height;
+                                let ix = w * 0.1, iy = h * 0.1;
+                                corners = [
+                                    {x: ix, y: iy}, {x: w - ix, y: iy}, 
+                                    {x: w - ix, y: h - iy}, {x: ix, y: h - iy}
+                                ];
 
-                            phase = 1;
-                            document.getElementById('msg').innerText = "📍 第一階段：拉動四個藍點，對齊卡牌「物理最外邊框」";
-                            document.getElementById('sub-msg').innerText = "這能修正拍照透視傾斜 (轉換為標準 630x880 比例)";
-                            document.getElementById('btn-next').style.display = "inline-block";
-                            
-                            draw();
+                                phase = 1;
+                                document.getElementById('msg').innerText = "📍 第一階段：拉動四個藍點，對齊卡牌「物理最外邊框」";
+                                document.getElementById('sub-msg').innerText = "這能修正拍照透視傾斜 (轉換為標準 630x880 比例)";
+                                document.getElementById('btn-next').style.display = "inline-block";
+                                
+                                draw();
+                            } catch (err) {
+                                document.getElementById('msg').innerText = "❌ 圖片渲染失敗";
+                                document.getElementById('sub-msg').innerText = err.message;
+                            }
                         };
                     }
 
@@ -319,38 +345,42 @@ elif page == "置中檢測":
                     }
 
                     document.getElementById('btn-next').onclick = () => {
-                        let src = cv.imread(imgCanvas);
-                        let dst = new cv.Mat();
-                        
-                        let srcTri = cv.matFromArray(4, 1, cv.CV_32FC2, [
-                            corners[0].x, corners[0].y, corners[1].x, corners[1].y,
-                            corners[2].x, corners[2].y, corners[3].x, corners[3].y
-                        ]);
+                        try {
+                            let src = cv.imread(imgCanvas);
+                            let dst = new cv.Mat();
+                            
+                            let srcTri = cv.matFromArray(4, 1, cv.CV_32FC2, [
+                                corners[0].x, corners[0].y, corners[1].x, corners[1].y,
+                                corners[2].x, corners[2].y, corners[3].x, corners[3].y
+                            ]);
 
-                        let cardW = 504, cardH = 704;
-                        let dstTri = cv.matFromArray(4, 1, cv.CV_32FC2, [
-                            0, 0, cardW, 0, cardW, cardH, 0, cardH
-                        ]);
+                            let cardW = 504, cardH = 704;
+                            let dstTri = cv.matFromArray(4, 1, cv.CV_32FC2, [
+                                0, 0, cardW, 0, cardW, cardH, 0, cardH
+                            ]);
 
-                        let M = cv.getPerspectiveTransform(srcTri, dstTri);
-                        cv.warpPerspective(src, dst, M, new cv.Size(cardW, cardH));
+                            let M = cv.getPerspectiveTransform(srcTri, dstTri);
+                            cv.warpPerspective(src, dst, M, new cv.Size(cardW, cardH));
 
-                        warpedCanvas.width = cardW; warpedCanvas.height = cardH;
-                        cv.imshow(warpedCanvas, dst);
-                        
-                        src.delete(); dst.delete(); M.delete(); srcTri.delete(); dstTri.delete();
+                            warpedCanvas.width = cardW; warpedCanvas.height = cardH;
+                            cv.imshow(warpedCanvas, dst);
+                            
+                            src.delete(); dst.delete(); M.delete(); srcTri.delete(); dstTri.delete();
 
-                        canvas.width = cardW; canvas.height = cardH;
-                        
-                        lines = { lx: cardW*0.05, rx: cardW*0.95, ty: cardH*0.05, by: cardH*0.95 };
-                        
-                        phase = 2;
-                        document.getElementById('btn-next').style.display = 'none';
-                        document.getElementById('btn-reset').style.display = 'inline-block';
-                        document.getElementById('result-area').style.display = 'block';
-                        document.getElementById('msg').innerText = "📍 第二階段：拖動四條紅線，對齊「測量錨點 (Bounding Box)」";
-                        document.getElementById('sub-msg').innerHTML = "實體邊框對齊實心印製線；無邊框對齊裝飾外緣。TAG Pristine 10 嚴格標準為 <strong>&lt; 51/49</strong>";
-                        draw();
+                            canvas.width = cardW; canvas.height = cardH;
+                            
+                            lines = { lx: cardW*0.05, rx: cardW*0.95, ty: cardH*0.05, by: cardH*0.95 };
+                            
+                            phase = 2;
+                            document.getElementById('btn-next').style.display = 'none';
+                            document.getElementById('btn-reset').style.display = 'inline-block';
+                            document.getElementById('result-area').style.display = 'block';
+                            document.getElementById('msg').innerText = "📍 第二階段：拖動四條紅線，對齊「測量錨點 (Bounding Box)」";
+                            document.getElementById('sub-msg').innerHTML = "實體邊框對齊實心印製線；無邊框對齊裝飾外緣。TAG Pristine 10 嚴格標準為 <strong>&lt; 51/49</strong>";
+                            draw();
+                        } catch (err) {
+                            alert("變形運算發生錯誤，請確認四個藍點是否形成交叉或異常形狀。\\n" + err.message);
+                        }
                     };
 
                     document.getElementById('btn-reset').onclick = () => {
@@ -452,14 +482,16 @@ elif page == "置中檢測":
                     canvas.addEventListener('touchstart', onDown, {passive: false});
                     canvas.addEventListener('touchmove', onMove, {passive: false});
                     window.addEventListener('touchend', onUp);
+                    
+                    // 啟動輪詢機制
+                    waitForOpenCV();
                 </script>
             </body>
             </html>
             """
             
             html_code = html_template.replace("___IMG_URI___", img_uri)
-            # 每個上傳的檔案都獨立渲染一個 iframe
+            # iframe 高度設為 900，提供充足的繪圖空間
             components.html(html_code, height=900)
-        # 執行字串替換，並將高度設為 1000 確保畫布有充足空間顯示
         html_code = html_template.replace("___IMG_URI___", img_uri)
         components.html(html_code, height=1000)
