@@ -19,12 +19,12 @@ if 'current_page' not in st.session_state: st.session_state['current_page'] = "�
 def navigate_to (page_name):
     st.session_state['current_page'] = page_name
 with st.sidebar:
-st.header("功能導航")
+    st.header("功能導航")
 page = st.radio( "功能區", ["首頁", "卡牌分析", "投資分析", "PSA 查詢", "置中檢測", "卡牌庫"], key="current_page")
 # 1. 首頁
 if page == "首頁":
-st.title("卡牌投資管理系統")
-st.write("功能列表：")
+   st.title("卡牌投資管理系統")
+   st.write("功能列表：")
 c1, c2, c3, c4, c5 = st.columns(5)
 c1.button("📊 前往卡牌分析", use_container_width=True, on_click=navigate_to, args=("卡牌分析",))
 c2.button("📈 前往投資分析", use_container_width=True, on_click=navigate_to, args=("投資分析",))
