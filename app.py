@@ -7,7 +7,6 @@ import numpy as np
 import base64
 import streamlit.components.v1 as components
 from PIL import Image
-from io import BytesIO
 from scraper import (get_chart_data, analyze_data, get_product_name, 
                      create_professional_chart, get_psa_pop_from_cert_url,
                      calculate_investment_metrics, create_combined_chart)
@@ -175,7 +174,7 @@ elif page == "PSA 查詢":
         else:
             st.error(st.session_state['psa_data'])
 
-# 6. 置中檢測 (TAG Smart Grading v6.3 + Skill 嚴格標準整合版)
+# 6. 置中檢測 (TAG Smart Grading v6.3 + 穩定伺服器版)
 elif page == "置中檢測":
     st.title("📏 TAG Smart Grading v6.3 (Precision)")
     st.markdown("""
@@ -186,40 +185,44 @@ elif page == "置中檢測":
        - `青色虛線`：對齊「TAG Bounding Box (連續性 UI 裝飾外框或圖騰交界)」。
     """)
     
-    # 開放多圖上傳
+    # 保留多圖上傳功能
     uploaded_files = st.file_uploader("上傳卡牌圖片 (支援多張同步上傳)", type=["jpg", "jpeg", "png"], accept_multiple_files=True)
     
     if uploaded_files:
         for idx, uploaded_file in enumerate(uploaded_files):
             st.subheader(f"檢測影像 {idx + 1}: {uploaded_file.name}")
             
+            # 【關鍵修復】：退回最穩定的原生 Base64 轉換方式，不呼叫 PIL 壓縮，避免伺服器端引發 Fatal Error
             try:
-                # 記憶體內壓縮，避免撐爆 iframe
-                img_pil = Image.open(uploaded_file)
-                img_pil.thumbnail((1200, 1200), Image.Resampling.LANCZOS)
-                
-                buffered = BytesIO()
-                if img_pil.mode in ("RGBA", "P"):
-                    img_pil = img_pil.convert("RGB")
-                img_pil.save(buffered, format="JPEG", quality=85)
-                
-                base64_img = base64.b64encode(buffered.getvalue()).decode("utf-8")
+                base64_img = base64.b64encode(uploaded_file.getvalue()).decode("utf-8")
                 img_uri = f"data:image/jpeg;base64,{base64_img}"
             except Exception as e:
-                st.error(f"圖片解析失敗: {e}")
+                st.error(f"圖片讀取失敗: {e}")
                 continue
             
-            # 整合 v6.3 介面與 Streamlit 穩定機制的 HTML
+            # 整合 v6.3 介面的 HTML 模板
             html_template = """
             <!DOCTYPE html>
             <html>
             <head>
               <meta charset="utf-8">
               <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-              <!-- 使用 jsdelivr CDN 載入 OpenCV -->
-              <script async src="https://cdn.jsdelivr.net/npm/@techstark/opencv-js@4.8.0/build/opencv.min.js"></script>
+              <!-- 強制全域初始化與官方穩定來源 -->
+              <script>
+                  var Module = {
+                      onRuntimeInitialized: function() {
+                          window.cvReady = true;
+                          var loadingEl = document.getElementById('loading');
+                          if(loadingEl) {
+                              loadingEl.style.display = 'none';
+                              document.getElementById('main-ui').style.display = 'flex';
+                              if (typeof runFocusDetect === 'function' && window.imgMat) { runFocusDetect(); }
+                          }
+                      }
+                  };
+              </script>
+              <script async src="https://docs.opencv.org/4.8.0/opencv.js" type="text/javascript"></script>
               <style>
-                /* --- Global Settings --- */
                 body { 
                   font-family: 'Segoe UI', sans-serif; background: #050505; color: #e0e0e0; 
                   margin: 0; display: flex; flex-direction: column; align-items: center; 
@@ -246,7 +249,6 @@ elif page == "置中檢測":
                 canvas { display: block; width: 100%; height: auto; }
                 #overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
                 
-                /* Step 1: Red Dots with Crosshair */
                 .control-point {
                   position: absolute; width: 44px; height: 44px; transform: translate(-50%, -50%);
                   cursor: crosshair; pointer-events: auto; z-index: 20; display: flex; align-items: center; justify-content: center;
@@ -314,7 +316,6 @@ elif page == "置中檢測":
 
             <script>
               const imgUri = "___IMG_URI___";
-              let cvReady = false;
               let imgMat = null, warpedMat = null, currentStep = 0;
               let corners = [], guides = { outL:0, outR:1, outT:0, outB:1, inL:0.1, inR:0.9, inT:0.1, inB:0.9 };
               const PADDING_RATIO = 0.05; 
@@ -322,37 +323,29 @@ elif page == "置中檢測":
               const canvas = document.getElementById('cvCanvas');
               const overlay = document.getElementById('overlay');
 
-              // 使用輪詢機制檢查 OpenCV 是否載入完成，不再依賴 onRuntimeInitialized
-              function checkCvReady() {
-                  if (typeof cv !== 'undefined' && typeof cv.Mat !== 'undefined') {
-                      cvReady = true;
-                      document.getElementById('loading').style.display = 'none';
-                      document.getElementById('main-ui').style.display = 'flex';
-                      
-                      // OpenCV 載入完成後，才開始讀取圖片並進行處理
-                      const img = new Image();
-                      img.onload = () => {
-                        setupImage(img);
-                      };
-                      img.src = imgUri;
-                  } else {
-                      setTimeout(checkCvReady, 100); // 每 100ms 檢查一次
-                  }
-              }
-              // 啟動輪詢
-              checkCvReady();
+              // 不依賴 DOM FileUpload，直接使用傳入的 Base64 繪圖
+              const img = new Image();
+              img.onload = () => {
+                setupImage(img);
+              };
+              img.src = imgUri;
 
               function setupImage(img) {
                 resetAll(false);
-                const MAX = 800; // 降低內部運算解析度避免 iframe 撐爆
+                const MAX = 1000; 
                 let w = img.width, h = img.height;
                 if (w > MAX || h > MAX) { const r = Math.min(MAX/w, MAX/h); w = Math.floor(w*r); h = Math.floor(h*r); }
                 canvas.width = w; canvas.height = h;
                 const ctx = canvas.getContext('2d');
                 ctx.drawImage(img, 0, 0, w, h);
 
+                // 檢查 OpenCV 是否就緒，未就緒則輪詢
+                if (!window.cvReady) {
+                    setTimeout(() => setupImage(img), 500);
+                    return;
+                }
+
                 if(imgMat) imgMat.delete();
-                // 使用 getImageData 抓像素，避免直接讀虛擬畫布造成破圖
                 let imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
                 imgMat = cv.matFromImageData(imgData);
 
@@ -366,7 +359,7 @@ elif page == "置中檢測":
 
               // --- Step 1: Focused Detect (ROI) ---
               function runFocusDetect() {
-                if(!imgMat || !cvReady) return;
+                if(!imgMat || !window.cvReady) return;
                 const status = document.getElementById('status-msg');
                 status.innerText = "🔍 Scanning...";
                 status.style.color = "#b388ff";
@@ -445,7 +438,7 @@ elif page == "置中檢測":
 
               // --- Step 2: Warp & Init Guides ---
               function processWarp() {
-                if(!imgMat || !cvReady) return;
+                if(!imgMat || !window.cvReady) return;
                 
                 try {
                     let srcPts = cv.matFromArray(4, 1, cv.CV_32FC2, [
@@ -499,7 +492,7 @@ elif page == "置中檢測":
               }
 
               function runAutoDetectInner() {
-                if(!warpedMat || !cvReady) return;
+                if(!warpedMat || !window.cvReady) return;
                 const status = document.getElementById('status-msg');
                 status.innerText = "⚡ Aligning Inner Frame...";
                 status.style.color = "#00e5ff";
@@ -578,7 +571,7 @@ elif page == "置中檢測":
               }
 
               function drawPoly() {
-                if(!imgMat || !cvReady) return; 
+                if(!imgMat || !window.cvReady) return; 
                 cv.imshow('cvCanvas', imgMat);
                 const ctx = canvas.getContext('2d'), s = getScale();
                 ctx.beginPath(); ctx.lineWidth = 2*s; ctx.strokeStyle = '#ff5252';
@@ -668,7 +661,7 @@ elif page == "置中檢測":
               function resetAll(full) {
                 if(full) { 
                     currentStep = 0; 
-                    if(imgMat && cvReady){cv.imshow('cvCanvas', imgMat); renderOverlay();} 
+                    if(imgMat && window.cvReady){cv.imshow('cvCanvas', imgMat); renderOverlay();} 
                     updateUI(); 
                 }
               }
