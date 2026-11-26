@@ -174,501 +174,290 @@ elif page == "PSA 查詢":
         else:
             st.error(st.session_state['psa_data'])
 
-# 6. 置中檢測 (TAG Smart Grading v6.3 + 穩定伺服器版)
+# 6. 置中檢測 (TAG 邊界基準版)
 elif page == "置中檢測":
-    st.title("📏 TAG Smart Grading v6.3 (Precision)")
+    st.title("📏 專業級卡牌置中檢測 (TAG / PSA 嚴格標準)")
     st.markdown("""
-    請上傳卡牌正/背面影像。系統將使用 v6.3 引擎進行二階段精密判定：
-    1. **自動外緣偵測 (ROI Focus)：** 框選卡片物理邊界，並加入 5% Buffer 避免畫面裁切過度。
-    2. **內外框雙對齊設計：** 
-       - `紅色實線`：對齊「物理最外緣」。
-       - `青色虛線`：對齊「TAG Bounding Box (連續性 UI 裝飾外框或圖騰交界)」。
+    請上傳卡牌正/背面影像。系統採用二階段判定：
+    1. **校正外框透視：** 拖拉藍點對齊卡牌「物理最外邊緣」。
+    2. **標定 TAG 測量錨點：** 拖拉紅線對齊內部基準線。
+       - **全圖卡 (Front)：** 請對齊「**連續性 UI 裝飾框架的最外圍邊界**」（勿單看文字或圖示中心）。
+       - **航海王卡背 (Back)：** 請對齊「**深藍色實心外框與內部淺色網格圖騰的交界線**」。
     """)
     
-    # 保留多圖上傳功能
-    uploaded_files = st.file_uploader("上傳卡牌圖片 (支援多張同步上傳)", type=["jpg", "jpeg", "png"], accept_multiple_files=True)
+    uploaded_file = st.file_uploader("上傳卡牌圖片", type=["jpg", "jpeg", "png"])
     
-    if uploaded_files:
-        for idx, uploaded_file in enumerate(uploaded_files):
-            st.subheader(f"檢測影像 {idx + 1}: {uploaded_file.name}")
+    if uploaded_file is not None:
+        # 將圖片轉換為 Base64 格式，直接傳送給瀏覽器
+        base64_img = base64.b64encode(uploaded_file.getvalue()).decode("utf-8")
+        img_uri = f"data:image/jpeg;base64,{base64_img}"
+        
+        # 純前端 HTML/JS 互動畫布模板
+        html_template = """
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <script async src="https://docs.opencv.org/4.8.0/opencv.js" type="text/javascript"></script>
+            <style>
+                body { font-family: sans-serif; text-align: center; color: #333; margin: 0; padding: 10px; }
+                #canvas-container { display: inline-block; position: relative; margin-top: 10px; }
+                /* 確保畫布會自動縮放不被裁切 */
+                canvas { border: 2px dashed #999; max-width: 100%; height: auto; touch-action: none; cursor: crosshair; }
+                .btn { padding: 12px 24px; font-size: 16px; font-weight: bold; color: white; background-color: #4CAF50; border: none; border-radius: 8px; cursor: pointer; margin: 5px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+                .btn-reset { background-color: #f44336; }
+                .btn:active { transform: translateY(2px); box-shadow: none; }
+                #status { font-weight: bold; font-size: 18px; margin: 5px 0; }
+                #result-text { font-size: 16px; margin: 5px 0; font-family: monospace; }
+            </style>
+        </head>
+        <body>
+            <h3 id="msg">🚀 影像處理引擎載入中...</h3>
+            <p id="sub-msg">請稍候，即將啟動互動校正畫布</p>
             
-            # 【關鍵修復】：退回最穩定的原生 Base64 轉換方式，不呼叫 PIL 壓縮，避免伺服器端引發 Fatal Error
-            try:
-                base64_img = base64.b64encode(uploaded_file.getvalue()).decode("utf-8")
-                img_uri = f"data:image/jpeg;base64,{base64_img}"
-            except Exception as e:
-                st.error(f"圖片讀取失敗: {e}")
-                continue
+            <button id="btn-next" class="btn" style="display:none;">✅ 確認外框 (進行透視拉平)</button>
+            <button id="btn-reset" class="btn btn-reset" style="display:none;">🔄 重新校正外框</button>
             
-            # 整合 v6.3 介面的 HTML 模板
-            html_template = """
-            <!DOCTYPE html>
-            <html>
-            <head>
-              <meta charset="utf-8">
-              <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-              <!-- 強制全域初始化與官方穩定來源 -->
-              <script>
-                  var Module = {
-                      onRuntimeInitialized: function() {
-                          window.cvReady = true;
-                          var loadingEl = document.getElementById('loading');
-                          if(loadingEl) {
-                              loadingEl.style.display = 'none';
-                              document.getElementById('main-ui').style.display = 'flex';
-                              if (typeof runFocusDetect === 'function' && window.imgMat) { runFocusDetect(); }
-                          }
-                      }
-                  };
-              </script>
-              <script async src="https://docs.opencv.org/4.8.0/opencv.js" type="text/javascript"></script>
-              <style>
-                body { 
-                  font-family: 'Segoe UI', sans-serif; background: #050505; color: #e0e0e0; 
-                  margin: 0; display: flex; flex-direction: column; align-items: center; 
-                  min-height: 100vh; overscroll-behavior: none; user-select: none;
-                }
-                .controls {
-                  position: sticky; top: 0; z-index: 100; background: #1a1a1a; width: 100%; padding: 12px 0;
-                  box-shadow: 0 4px 15px rgba(0,0,0,0.7); display: flex; justify-content: center; align-items: center; gap: 10px; flex-wrap: wrap;
-                }
-                .btn { padding: 8px 16px; border: none; border-radius: 20px; font-weight: bold; cursor: pointer; transition: 0.2s; font-size: 14px; white-space: nowrap;}
-                .btn:active { transform: scale(0.95); }
-                .btn-blue { background: #00bcd4; color: #000; }
-                .btn-purple { background: linear-gradient(135deg, #7c4dff, #b388ff); color: white; box-shadow: 0 0 10px rgba(124, 77, 255, 0.6); border: 1px solid #999; }
-                .btn-cyan { background: linear-gradient(135deg, #00e5ff, #00b8d4); color: #000; box-shadow: 0 0 10px rgba(0, 229, 255, 0.4); }
-                .btn-gray { background: #424242; color: white; }
-                
-                #workspace {
-                  position: relative; margin: 15px auto; box-shadow: 0 0 30px rgba(0,0,0,0.5);
-                  font-size: 0; touch-action: none; max-width: 98vw; border: 1px solid #333; overflow: hidden;
-                  background-image: linear-gradient(#111 1px, transparent 1px), linear-gradient(90deg, #111 1px, transparent 1px);
-                  background-size: 20px 20px;
-                  background-color: #000;
-                }
-                canvas { display: block; width: 100%; height: auto; }
-                #overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
-                
-                .control-point {
-                  position: absolute; width: 44px; height: 44px; transform: translate(-50%, -50%);
-                  cursor: crosshair; pointer-events: auto; z-index: 20; display: flex; align-items: center; justify-content: center;
-                }
-                .control-point::before {
-                  content: ''; width: 14px; height: 14px; background: rgba(255, 60, 60, 0.5);
-                  border: 2px solid #fff; border-radius: 50%; box-shadow: 0 0 5px black;
-                }
-                .control-point::after {
-                  content: '+'; position: absolute; color: rgba(255,255,255,0.8); 
-                  font-weight: 100; font-size: 24px; pointer-events: none; top: 6px; left: 14px;
-                }
-                
-                .guide-line { position: absolute; pointer-events: auto; z-index: 10; }
-                .guide-line::after { content: ''; position: absolute; background: transparent; z-index: 11; } 
-                .line-h { width: 100%; left: 0; cursor: ns-resize; } .line-h::after { top: -20px; bottom: -20px; left:0; right:0;}
-                .line-v { height: 100%; top: 0; cursor: ew-resize; } .line-v::after { left: -20px; right: -20px; top:0; bottom:0;}
-                
-                .outer-style.line-h { height: 1px; background: #ff5252; } .outer-style.line-v { width: 1px; background: #ff5252; }
-                .inner-style.line-h { height: 0; border-top: 1px dashed #00e5ff; } .inner-style.line-v { width: 0; border-left: 1px dashed #00e5ff; }
-                
-                #result-panel {
-                  display: none; width: 90%; max-width: 500px; background: #1a1a1a; border-radius: 12px; padding: 15px;
-                  margin: 20px 0; grid-template-columns: 1fr 1fr; gap: 15px;
-                }
-                .score-card { background: #252525; padding: 10px; border-radius: 8px; text-align: center; border: 1px solid #333; }
-                .score-val { font-size: 20px; font-weight: bold; color: #fff; font-family: monospace; margin: 5px 0; }
-                .badge { display: inline-block; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; color:#000; }
-                #status-msg { color: #888; margin: 10px; font-size: 14px; min-height: 20px;}
-                #loading { color: #00bcd4; margin-top: 50px; font-weight: bold; }
-              </style>
-            </head>
-            <body>
+            <div id="result-area" style="display:none; background:#f1f8e9; border:1px solid #c5e1a5; border-radius:8px; padding:10px; margin:10px auto; max-width:600px;">
+                <div id="result-text">L/R: -- | T/B: --</div>
+                <div id="status"></div>
+            </div>
 
-            <div id="loading">🚀 Loading v6.3 Engine & Aligning...</div>
-
-            <div id="main-ui" style="display:none; width: 100%; flex-direction: column; align-items: center;">
-              <div class="controls">
-                <button id="autoBtnStep1" class="btn btn-purple" onclick="runFocusDetect()" style="display:none;">✨ Auto Detect</button>
-                <button id="nextBtn" class="btn btn-blue" onclick="processWarp()" style="display:none;">Next</button>
-                <button id="autoBtnStep2" class="btn btn-cyan" onclick="runAutoDetectInner()" style="display:none;">⚡ Align Inner</button>
-                <button id="resetBtn" class="btn btn-gray" onclick="resetAll(true)" style="display:none;">Reset</button>
-              </div>
-
-              <div id="status-msg">Ready</div>
-
-              <div id="workspace">
-                <canvas id="cvCanvas"></canvas>
-                <div id="overlay"></div>
-              </div>
-
-              <div id="result-panel">
-                <div class="score-card">
-                  <div style="color:#aaa; font-size:12px">Left / Right</div>
-                  <div id="val-lr" class="score-val">--</div>
-                  <div id="bdg-lr" class="badge">--</div>
-                </div>
-                <div class="score-card">
-                  <div style="color:#aaa; font-size:12px">Top / Bottom</div>
-                  <div id="val-tb" class="score-val">--</div>
-                  <div id="bdg-tb" class="badge">--</div>
-                </div>
-              </div>
+            <div id="canvas-container">
+                <canvas id="canvas"></canvas>
             </div>
 
             <script>
-              const imgUri = "___IMG_URI___";
-              let imgMat = null, warpedMat = null, currentStep = 0;
-              let corners = [], guides = { outL:0, outR:1, outT:0, outB:1, inL:0.1, inR:0.9, inT:0.1, inB:0.9 };
-              const PADDING_RATIO = 0.05; 
-
-              const canvas = document.getElementById('cvCanvas');
-              const overlay = document.getElementById('overlay');
-
-              // 不依賴 DOM FileUpload，直接使用傳入的 Base64 繪圖
-              const img = new Image();
-              img.onload = () => {
-                setupImage(img);
-              };
-              img.src = imgUri;
-
-              function setupImage(img) {
-                resetAll(false);
-                const MAX = 1000; 
-                let w = img.width, h = img.height;
-                if (w > MAX || h > MAX) { const r = Math.min(MAX/w, MAX/h); w = Math.floor(w*r); h = Math.floor(h*r); }
-                canvas.width = w; canvas.height = h;
+                const imgUri = "___IMG_URI___";
+                const canvas = document.getElementById('canvas');
                 const ctx = canvas.getContext('2d');
-                ctx.drawImage(img, 0, 0, w, h);
+                
+                let phase = 0; // 0: loading, 1: corners(blue), 2: lines(red)
+                let img = new Image();
+                let imgCanvas = document.createElement('canvas'); // 原始圖片快取
+                let warpedCanvas = document.createElement('canvas'); // 變形後的圖片快取
+                
+                let corners = [];
+                let lines = {};
+                let dragObj = null;
 
-                // 檢查 OpenCV 是否就緒，未就緒則輪詢
-                if (!window.cvReady) {
-                    setTimeout(() => setupImage(img), 500);
-                    return;
+                // 檢查 OpenCV 是否載入完成
+                function checkCv() {
+                    if (typeof cv !== 'undefined' && cv.Mat) initApp();
+                    else setTimeout(checkCv, 100);
+                }
+                checkCv();
+
+                function initApp() {
+                    img.src = imgUri;
+                    img.onload = () => {
+                        // 根據視窗大小計算合適的畫布尺寸 (防止裁切)
+                        const maxW = window.innerWidth * 0.9;
+                        const maxH = window.innerHeight * 0.7;
+                        const scale = Math.min(maxW / img.width, maxH / img.height, 1);
+                        
+                        imgCanvas.width = img.width * scale;
+                        imgCanvas.height = img.height * scale;
+                        imgCanvas.getContext('2d').drawImage(img, 0, 0, imgCanvas.width, imgCanvas.height);
+                        
+                        canvas.width = imgCanvas.width;
+                        canvas.height = imgCanvas.height;
+
+                        // 初始化四個外框角點 (預設內縮 10%)
+                        let w = canvas.width, h = canvas.height;
+                        let ix = w * 0.1, iy = h * 0.1;
+                        corners = [
+                            {x: ix, y: iy}, {x: w - ix, y: iy}, 
+                            {x: w - ix, y: h - iy}, {x: ix, y: h - iy}
+                        ];
+
+                        phase = 1;
+                        document.getElementById('msg').innerText = "📍 第一階段：拉動四個藍點，對齊卡牌「物理最外邊框」";
+                        document.getElementById('sub-msg').innerText = "這能修正拍照透視傾斜 (轉換為標準 630x880 比例)";
+                        document.getElementById('btn-next').style.display = "inline-block";
+                        
+                        draw();
+                    };
                 }
 
-                if(imgMat) imgMat.delete();
-                let imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-                imgMat = cv.matFromImageData(imgData);
+                function draw() {
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-                corners = [{x: w*0.2, y: h*0.2, label:'TL'}, {x: w*0.8, y: h*0.2, label:'TR'}, {x: w*0.8, y: h*0.8, label:'BR'}, {x: w*0.2, y: h*0.8, label:'BL'}];
-                
-                currentStep = 0;
-                updateUI();
-                renderOverlay();
-                setTimeout(runFocusDetect, 100);
-              }
+                    if (phase === 1) {
+                        ctx.drawImage(imgCanvas, 0, 0);
+                        
+                        // 畫藍色外框線
+                        ctx.beginPath();
+                        ctx.moveTo(corners[0].x, corners[0].y);
+                        for(let i=1; i<4; i++) ctx.lineTo(corners[i].x, corners[i].y);
+                        ctx.closePath();
+                        ctx.lineWidth = 2; ctx.strokeStyle = '#00BFFF'; ctx.stroke();
 
-              // --- Step 1: Focused Detect (ROI) ---
-              function runFocusDetect() {
-                if(!imgMat || !window.cvReady) return;
-                const status = document.getElementById('status-msg');
-                status.innerText = "🔍 Scanning...";
-                status.style.color = "#b388ff";
+                        // 畫四個藍色控制點
+                        ctx.fillStyle = 'rgba(0, 191, 255, 0.6)';
+                        corners.forEach(c => {
+                            ctx.beginPath(); ctx.arc(c.x, c.y, 12, 0, Math.PI * 2);
+                            ctx.fill(); ctx.stroke();
+                        });
+                    } 
+                    else if (phase === 2) {
+                        ctx.drawImage(warpedCanvas, 0, 0);
+                        
+                        // 畫四條紅線
+                        ctx.lineWidth = 3; ctx.strokeStyle = '#FF2A2A';
+                        ctx.beginPath(); ctx.moveTo(lines.lx, 0); ctx.lineTo(lines.lx, canvas.height); ctx.stroke();
+                        ctx.beginPath(); ctx.moveTo(lines.rx, 0); ctx.lineTo(lines.rx, canvas.height); ctx.stroke();
+                        ctx.beginPath(); ctx.moveTo(0, lines.ty); ctx.lineTo(canvas.width, lines.ty); ctx.stroke();
+                        ctx.beginPath(); ctx.moveTo(0, lines.by); ctx.lineTo(canvas.width, lines.by); ctx.stroke();
 
-                try {
-                  let marginX = Math.floor(imgMat.cols * 0.12);
-                  let marginY = Math.floor(imgMat.rows * 0.12);
-                  let roiW = imgMat.cols - (2 * marginX);
-                  let roiH = imgMat.rows - (2 * marginY);
-                  
-                  let rectROI = new cv.Rect(marginX, marginY, roiW, roiH);
-                  let srcROI = imgMat.roi(rectROI);
-
-                  let gray = new cv.Mat(), blurred = new cv.Mat(), edges = new cv.Mat();
-                  let contours = new cv.MatVector(), hierarchy = new cv.Mat();
-                  
-                  cv.cvtColor(srcROI, gray, cv.COLOR_RGBA2GRAY, 0);
-                  cv.GaussianBlur(gray, blurred, new cv.Size(5, 5), 0);
-                  cv.Canny(blurred, edges, 50, 150);
-                  
-                  let kernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(5, 5));
-                  cv.morphologyEx(edges, edges, cv.MORPH_CLOSE, kernel);
-
-                  cv.findContours(edges, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
-
-                  let maxArea = 0, bestCnt = null;
-                  const minArea = (roiW * roiH) * 0.20; 
-
-                  for (let i = 0; i < contours.size(); ++i) {
-                    let cnt = contours.get(i);
-                    let area = cv.contourArea(cnt);
-                    if (area > maxArea && area > minArea) {
-                      maxArea = area;
-                      bestCnt = cnt; 
-                    } else { cnt.delete(); }
-                  }
-
-                  if (bestCnt) {
-                    let pts = bestCnt.data32S; 
-                    let numPts = pts.length / 2;
-                    let tl = {val: Infinity, x:0, y:0}, br = {val: -Infinity, x:0, y:0};
-                    let tr = {val: -Infinity, x:0, y:0}, bl = {val: Infinity, x:0, y:0};
-
-                    for (let i = 0; i < numPts; i++) {
-                      let x = pts[i*2];
-                      let y = pts[i*2+1];
-                      let sum = x + y;
-                      let diff = x - y;
-                      if (sum < tl.val) tl = {val: sum, x:x, y:y, label:'TL'};
-                      if (sum > br.val) br = {val: sum, x:x, y:y, label:'BR'};
-                      if (diff > tr.val) tr = {val: diff, x:x, y:y, label:'TR'};
-                      if (diff < bl.val) bl = {val: diff, x:x, y:y, label:'BL'};
+                        calculateResult();
                     }
+                }
 
-                    corners = [
-                      {x: tl.x + marginX, y: tl.y + marginY, label:'TL'},
-                      {x: tr.x + marginX, y: tr.y + marginY, label:'TR'},
-                      {x: br.x + marginX, y: br.y + marginY, label:'BR'},
-                      {x: bl.x + marginX, y: bl.y + marginY, label:'BL'}
-                    ];
+                // 執行透視校正
+                document.getElementById('btn-next').onclick = () => {
+                    let src = cv.imread(imgCanvas);
+                    let dst = new cv.Mat();
                     
-                    status.innerText = "✅ Card Detected";
-                    status.style.color = "#00e676";
-                    bestCnt.delete(); 
-                  } else {
-                    status.innerText = "⚠️ Manual Adjustment Needed";
-                    status.style.color = "#ff5252";
-                  }
-
-                  renderOverlay();
-                  srcROI.delete(); gray.delete(); blurred.delete(); edges.delete(); 
-                  contours.delete(); hierarchy.delete(); kernel.delete();
-
-                } catch (e) { console.error(e); }
-              }
-
-              // --- Step 2: Warp & Init Guides ---
-              function processWarp() {
-                if(!imgMat || !window.cvReady) return;
-                
-                try {
-                    let srcPts = cv.matFromArray(4, 1, cv.CV_32FC2, [
-                      corners[0].x, corners[0].y, corners[1].x, corners[1].y,
-                      corners[2].x, corners[2].y, corners[3].x, corners[3].y
-                    ]);
-                    
-                    let wT = Math.hypot(corners[1].x-corners[0].x, corners[1].y-corners[0].y);
-                    let wB = Math.hypot(corners[2].x-corners[3].x, corners[2].y-corners[3].y);
-                    let hL = Math.hypot(corners[3].x-corners[0].x, corners[3].y-corners[0].y);
-                    let hR = Math.hypot(corners[2].x-corners[1].x, corners[2].y-corners[1].y);
-                    
-                    let cardW = Math.max(wT, wB);
-                    let cardH = Math.max(hL, hR);
-                    let marginX = cardW * PADDING_RATIO;
-                    let marginY = cardH * PADDING_RATIO;
-                    let dstW = cardW + (marginX * 2);
-                    let dstH = cardH + (marginY * 2);
-
-                    let dstPts = cv.matFromArray(4, 1, cv.CV_32FC2, [
-                      marginX, marginY,               
-                      dstW - marginX, marginY,        
-                      dstW - marginX, dstH - marginY, 
-                      marginX, dstH - marginY         
+                    let srcTri = cv.matFromArray(4, 1, cv.CV_32FC2, [
+                        corners[0].x, corners[0].y, corners[1].x, corners[1].y,
+                        corners[2].x, corners[2].y, corners[3].x, corners[3].y
                     ]);
 
-                    let M = cv.getPerspectiveTransform(srcPts, dstPts);
-                    if(warpedMat) warpedMat.delete(); warpedMat = new cv.Mat();
-                    cv.warpPerspective(imgMat, warpedMat, M, new cv.Size(dstW, dstH), cv.INTER_LINEAR, cv.BORDER_CONSTANT, new cv.Scalar(0, 0, 0, 255));
+                    // 標準卡牌比例 63x88 -> 建立 504x704 的畫布 (維持高解析)
+                    let cardW = 504, cardH = 704;
+                    let dstTri = cv.matFromArray(4, 1, cv.CV_32FC2, [
+                        0, 0, cardW, 0, cardW, cardH, 0, cardH
+                    ]);
+
+                    let M = cv.getPerspectiveTransform(srcTri, dstTri);
+                    cv.warpPerspective(src, dst, M, new cv.Size(cardW, cardH));
+
+                    warpedCanvas.width = cardW; warpedCanvas.height = cardH;
+                    cv.imshow(warpedCanvas, dst);
                     
-                    canvas.width = dstW; canvas.height = dstH;
-                    cv.imshow('cvCanvas', warpedMat);
-                    srcPts.delete(); dstPts.delete(); M.delete();
+                    src.delete(); dst.delete(); M.delete(); srcTri.delete(); dstTri.delete();
 
-                    currentStep = 1; 
+                    canvas.width = cardW; canvas.height = cardH;
                     
-                    guides.outL = marginX / dstW;
-                    guides.outR = (dstW - marginX) / dstW;
-                    guides.outT = marginY / dstH;
-                    guides.outB = (dstH - marginY) / dstH;
-
-                    guides.inT = guides.outT + 0.088; 
-                    guides.inB = guides.outT + 0.915; 
-                    guides.inL = guides.outL + 0.08; 
-                    guides.inR = guides.outR - 0.08;
-
-                    updateUI(); renderOverlay();
-                } catch (err) {
-                    alert("Warping error: Please check the blue dots layout.");
-                }
-              }
-
-              function runAutoDetectInner() {
-                if(!warpedMat || !window.cvReady) return;
-                const status = document.getElementById('status-msg');
-                status.innerText = "⚡ Aligning Inner Frame...";
-                status.style.color = "#00e5ff";
-
-                try {
-                  let src = warpedMat.clone();
-                  let gray = new cv.Mat(), edges = new cv.Mat();
-                  cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY, 0);
-                  cv.Canny(gray, edges, 50, 150);
-
-                  const W = src.cols, H = src.rows;
-
-                  function findStrongestLine(isVertical, startPct, endPct) {
-                    let bestPos = -1, maxScore = 0;
-                    const minLimit = isVertical ? (guides.outL * W) : (guides.outT * H);
-                    const cardSize = isVertical ? (guides.outR - guides.outL) * W : (guides.outB - guides.outT) * H;
+                    // 預設紅線位置
+                    lines = { lx: cardW*0.05, rx: cardW*0.95, ty: cardH*0.05, by: cardH*0.95 };
                     
-                    const startIdx = Math.floor(minLimit + (cardSize * startPct));
-                    const endIdx = Math.floor(minLimit + (cardSize * endPct));
-
-                    for (let i = startIdx; i < endIdx; i++) {
-                      let score = 0;
-                      for (let j = 0; j < (isVertical ? H : W); j+=2) {
-                        let pixel = isVertical ? edges.ucharPtr(j, i)[0] : edges.ucharPtr(i, j)[0];
-                        if (pixel > 200) score++;
-                      }
-                      if (score > maxScore) { maxScore = score; bestPos = i; }
-                    }
-                    return (maxScore > 10) ? bestPos : null;
-                  }
-
-                  let l = findStrongestLine(true, 0.06, 0.10); if(l) guides.inL = l/W;
-                  let r = findStrongestLine(true, 0.90, 0.94); if(r) guides.inR = r/W;
-                  let t = findStrongestLine(false, 0.06, 0.12); if(t) guides.inT = t/H;
-                  let b = findStrongestLine(false, 0.88, 0.93); if(b) guides.inB = b/H;
-
-                  renderOverlay(); calc();
-                  status.innerText = "⚡ Aligned (Fine-tune cyan lines manually)";
-                  src.delete(); gray.delete(); edges.delete();
-                } catch(e) { console.error(e); }
-              }
-
-              function getScale() { const r = canvas.getBoundingClientRect(); return r.width ? canvas.width/r.width : 1; }
-
-              function renderOverlay() {
-                overlay.innerHTML = '';
-                const scale = getScale();
-                if (currentStep === 0) {
-                  corners.forEach((pt, idx) => {
-                    const el = document.createElement('div'); el.className = 'control-point'; el.setAttribute('data-label', pt.label);
-                    el.style.left = (pt.x/scale)+'px'; el.style.top = (pt.y/scale)+'px';
-                    bindDrag(el, (dx, dy) => { corners[idx].x = dx*scale; corners[idx].y = dy*scale; drawPoly(); });
-                    overlay.appendChild(el);
-                  });
-                  drawPoly();
-                } else {
-                  renderLine('h', guides.outT, 'outer', (v)=>{guides.outT=v; calc();});
-                  renderLine('h', guides.inT,  'inner', (v)=>{guides.inT=v; calc();});
-                  renderLine('h', guides.inB,  'inner', (v)=>{guides.inB=v; calc();});
-                  renderLine('h', guides.outB, 'outer', (v)=>{guides.outB=v; calc();});
-                  renderLine('v', guides.outL, 'outer', (v)=>{guides.outL=v; calc();});
-                  renderLine('v', guides.inL,  'inner', (v)=>{guides.inL=v; calc();});
-                  renderLine('v', guides.inR,  'inner', (v)=>{guides.inR=v; calc();});
-                  renderLine('v', guides.outR, 'outer', (v)=>{guides.outR=v; calc();});
-                  calc();
-                }
-              }
-
-              function renderLine(dir, val, style, cb) {
-                const r = canvas.getBoundingClientRect();
-                const el = document.createElement('div');
-                el.className = `guide-line line-${dir} ${style}-style`;
-                if(dir==='h') el.style.top = (val*r.height)+'px'; else el.style.left = (val*r.width)+'px';
-                bindDrag(el, (x, y) => { if(dir==='h') cb(y/r.height); else cb(x/r.width); });
-                overlay.appendChild(el);
-              }
-
-              function drawPoly() {
-                if(!imgMat || !window.cvReady) return; 
-                cv.imshow('cvCanvas', imgMat);
-                const ctx = canvas.getContext('2d'), s = getScale();
-                ctx.beginPath(); ctx.lineWidth = 2*s; ctx.strokeStyle = '#ff5252';
-                ctx.moveTo(corners[0].x, corners[0].y); ctx.lineTo(corners[1].x, corners[1].y);
-                ctx.lineTo(corners[2].x, corners[2].y); ctx.lineTo(corners[3].x, corners[3].y);
-                ctx.closePath(); ctx.stroke();
-              }
-
-              function bindDrag(el, onMove) {
-                const start = (e) => {
-                  e.preventDefault(); e.stopPropagation();
-                  const isTouch = e.type==='touchstart';
-                  const rect = document.getElementById('workspace').getBoundingClientRect();
-                  const move = (evt) => {
-                    evt.preventDefault();
-                    const c = isTouch ? evt.touches[0] : evt;
-                    let x = Math.max(0, Math.min(c.clientX - rect.left, rect.width));
-                    let y = Math.max(0, Math.min(c.clientY - rect.top, rect.height));
-                    if(el.classList.contains('line-h')) el.style.top = y+'px';
-                    else if(el.classList.contains('line-v')) el.style.left = x+'px';
-                    else { el.style.left = x+'px'; el.style.top = y+'px'; }
-                    onMove(x, y);
-                  };
-                  const end = () => {
-                    document.removeEventListener(isTouch?'touchmove':'mousemove', move);
-                    document.removeEventListener(isTouch?'touchend':'mouseup', end);
-                  };
-                  document.addEventListener(isTouch?'touchmove':'mousemove', move, {passive:false});
-                  document.addEventListener(isTouch?'touchend':'mouseup', end);
+                    phase = 2;
+                    document.getElementById('btn-next').style.display = 'none';
+                    document.getElementById('btn-reset').style.display = 'inline-block';
+                    document.getElementById('result-area').style.display = 'block';
+                    document.getElementById('msg').innerText = "📍 第二階段：拖動四條紅線，對齊「TAG 測量錨點 (Bounding Box)」";
+                    document.getElementById('sub-msg').innerHTML = "正面對齊 UI 裝飾外框；背面對齊圖騰交界。TAG 10 / Pristine 嚴格標準為 <strong><= 53/47</strong>";
+                    draw();
                 };
-                el.addEventListener('mousedown', start); el.addEventListener('touchstart', start, {passive:false});
-              }
 
-              function calc() {
-                const l = guides.inL-guides.outL, r = guides.outR-guides.inR;
-                const t = guides.inT-guides.outT, b = guides.outB-guides.inB;
-                const sW = l+r||0.001, sH = t+b||0.001;
-                setScore('lr', (l/sW)*100, (r/sW)*100); setScore('tb', (t/sH)*100, (b/sH)*100);
-              }
+                document.getElementById('btn-reset').onclick = () => {
+                    phase = 1;
+                    canvas.width = imgCanvas.width; canvas.height = imgCanvas.height;
+                    document.getElementById('btn-next').style.display = 'inline-block';
+                    document.getElementById('btn-reset').style.display = 'none';
+                    document.getElementById('result-area').style.display = 'none';
+                    document.getElementById('msg').innerText = "📍 第一階段：拉動四個藍點，對齊卡牌「物理最外邊框」";
+                    document.getElementById('sub-msg').innerText = "這能修正拍照透視傾斜 (轉換為標準 630x880 比例)";
+                    draw();
+                };
 
-              // --- 🛡️ 整合 Skill 嚴格鑑定標準 ---
-              function setScore(id, v1, v2) {
-                if(v1<0 || v2<0) return;
-                // 強制顯示小數點後兩位
-                document.getElementById('val-'+id).innerText = `${v1.toFixed(2)} / ${v2.toFixed(2)}`;
-                const w = Math.max(v1, v2);
-                const b = document.getElementById('bdg-'+id);
-                
-                // 依照最新嚴格標準判定
-                if(w <= 50.00) { 
-                    b.innerText="BGS 10 黑標"; 
-                    b.style.background="#d4af37"; b.style.color="#000";
-                } else if(w < 51.00) { 
-                    b.innerText="TAG 10 Pristine"; 
-                    b.style.background="#2e7d32"; b.style.color="#fff";
-                } else if(w <= 53.00) { 
-                    b.innerText="TAG 10 Gem Mint"; 
-                    b.style.background="#1565c0"; b.style.color="#fff";
-                } else if(w <= 55.00) { 
-                    b.innerText="PSA 10 Gem Mint"; 
-                    b.style.background="#0288d1"; b.style.color="#fff";
-                } else if(w <= 60.00) { 
-                    b.innerText="PSA 10 (寬容極限)"; 
-                    b.style.background="#ff9800"; b.style.color="#000";
-                } else { 
-                    b.innerText="未達 Gem Mint"; 
-                    b.style.background="#d32f2f"; b.style.color="#fff";
+                // 結果計算邏輯 (導入 TAG / Pristine 嚴格演算法)
+                function calculateResult() {
+                    let leftM = lines.lx;
+                    let rightM = canvas.width - lines.rx;
+                    let topM = lines.ty;
+                    let bottomM = canvas.height - lines.by;
+
+                    let lr = (leftM / (leftM + rightM)) * 100 || 50;
+                    let tb = (topM / (topM + bottomM)) * 100 || 50;
+
+                    document.getElementById('result-text').innerText = 
+                        `左右置中 (L/R): ${lr.toFixed(2)} / ${(100-lr).toFixed(2)} | 上下置中 (T/B): ${tb.toFixed(2)} / ${(100-tb).toFixed(2)}`;
+
+                    let lrMax = Math.max(lr, 100 - lr);
+                    let tbMax = Math.max(tb, 100 - tb);
+                    let worstRatio = Math.max(lrMax, tbMax);
+                    
+                    let stat = document.getElementById('status');
+                    
+                    if (worstRatio <= 50.00) {
+                        stat.innerHTML = "🏆 判定：BGS 10 黑標 / TAG 10 Pristine (極致完美 50/50)";
+                        stat.style.color = "#d4af37"; // 黑標金
+                    } else if (worstRatio <= 53.00) {
+                        stat.innerHTML = "✨ 判定：TAG 10 / CGC 10 Pristine (符合 <= 53/47 嚴格邊界標準)";
+                        stat.style.color = "#2e7d32";
+                    } else if (worstRatio <= 55.00) {
+                        stat.innerHTML = "✅ 判定：PSA 10 Gem Mint / BGS 9.5 (符合 <= 55/45 標準)";
+                        stat.style.color = "#1565c0";
+                    } else if (worstRatio <= 60.00) {
+                        stat.innerHTML = "⚠️ 判定：符合 PSA 10 寬容極限 (最寬 60/40) 或卡背標準";
+                        stat.style.color = "#ff9800";
+                    } else {
+                        stat.innerHTML = "❌ 判定：未達 Gem Mint 置中要求 (超過 60/40 極限)";
+                        stat.style.color = "#d32f2f";
+                    }
                 }
-              }
 
-              function updateUI() {
-                const isStep0 = (currentStep === 0);
-                const hasImg = (imgMat !== null);
-                
-                document.getElementById('autoBtnStep1').style.display = (isStep0 && hasImg) ? 'inline-block' : 'none';
-                document.getElementById('nextBtn').style.display = (isStep0 && hasImg) ? 'inline-block' : 'none';
-                document.getElementById('autoBtnStep2').style.display = (!isStep0 && hasImg) ? 'inline-block' : 'none';
-                document.getElementById('resetBtn').style.display = (!isStep0) ? 'inline-block' : 'none';
-                document.getElementById('result-panel').style.display = isStep0 ? 'none' : 'grid';
-
-                if (!isStep0) {
-                    document.getElementById('status-msg').innerText = "Step 2: Adjust Lines (Red for Outer Edge, Cyan for Inner UI/Box)";
-                    document.getElementById('status-msg').style.color = "#aaa";
+                // 處理滑鼠與手指拖曳事件
+                function getPos(e) {
+                    let rect = canvas.getBoundingClientRect();
+                    let clientX = e.touches ? e.touches[0].clientX : e.clientX;
+                    let clientY = e.touches ? e.touches[0].clientY : e.clientY;
+                    // 乘上比例係數，修正 CSS 縮放導致的拖曳偏移問題
+                    return {
+                        x: (clientX - rect.left) * (canvas.width / rect.width),
+                        y: (clientY - rect.top) * (canvas.height / rect.height)
+                    };
                 }
-              }
 
-              function resetAll(full) {
-                if(full) { 
-                    currentStep = 0; 
-                    if(imgMat && window.cvReady){cv.imshow('cvCanvas', imgMat); renderOverlay();} 
-                    updateUI(); 
+                function onDown(e) {
+                    let {x, y} = getPos(e);
+                    dragObj = null;
+                    if (phase === 1) {
+                        for (let i=0; i<4; i++) {
+                            if (Math.hypot(x - corners[i].x, y - corners[i].y) < 30) {
+                                dragObj = i; break;
+                            }
+                        }
+                    } else if (phase === 2) {
+                        let t = 20; // 判定範圍
+                        if (Math.abs(x - lines.lx) < t) dragObj = 'lx';
+                        else if (Math.abs(x - lines.rx) < t) dragObj = 'rx';
+                        else if (Math.abs(y - lines.ty) < t) dragObj = 'ty';
+                        else if (Math.abs(y - lines.by) < t) dragObj = 'by';
+                    }
+                    if (dragObj !== null && e.cancelable) e.preventDefault();
                 }
-              }
+
+                function onMove(e) {
+                    if (dragObj === null) return;
+                    let {x, y} = getPos(e);
+                    if (phase === 1) {
+                        corners[dragObj].x = x; corners[dragObj].y = y;
+                    } else if (phase === 2) {
+                        if (dragObj === 'lx') lines.lx = Math.max(0, Math.min(x, lines.rx - 10));
+                        if (dragObj === 'rx') lines.rx = Math.min(canvas.width, Math.max(x, lines.lx + 10));
+                        if (dragObj === 'ty') lines.ty = Math.max(0, Math.min(y, lines.by - 10));
+                        if (dragObj === 'by') lines.by = Math.min(canvas.height, Math.max(y, lines.ty + 10));
+                    }
+                    draw();
+                    if (e.cancelable) e.preventDefault(); // 拖曳時防止網頁捲動
+                }
+
+                function onUp() { dragObj = null; }
+
+                canvas.addEventListener('mousedown', onDown);
+                canvas.addEventListener('mousemove', onMove);
+                window.addEventListener('mouseup', onUp);
+                canvas.addEventListener('touchstart', onDown, {passive: false});
+                canvas.addEventListener('touchmove', onMove, {passive: false});
+                window.addEventListener('touchend', onUp);
             </script>
-            </body>
-            </html>
-            """
-            
-            html_code = html_template.replace("___IMG_URI___", img_uri)
-            components.html(html_code, height=950)
+        </body>
+        </html>
+        """
+        
+        # 執行字串替換，並將高度設為 1000 確保畫布有充足空間顯示
+        html_code = html_template.replace("___IMG_URI___", img_uri)
+        components.html(html_code, height=1000)
