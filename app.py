@@ -143,28 +143,47 @@ const canvas = $('cvCanvas'), overlay = $('overlay');
 const clamp = (v) => Math.max(0, Math.min(1, v));
 
 let imgMat = null, warpedMat = null, srcCanvas = null, currentStep = 0, started = false;
+let cvLoadFailed = false, manualAdjusted = false;
 let corners = [];
 let guides = { outL:0, outR:1, outT:0, outB:1, inL:.1, inR:.9, inT:.1, inB:.9 };
 
 function setStatus(msg, color) { const s = $('status-msg'); s.innerText = msg; s.style.color = color || '#888'; }
 function loadingMsg(html) { $('loading').innerHTML = html; }
 
-/* ---------- 載入流程：圖片 → OpenCV ---------- */
+/* ---------- 載入流程：先顯示圖片，再載入 OpenCV ---------- */
 const img = new Image();
-img.onload = () => { loadingMsg("✅ 圖片解析成功<br>⏳ OpenCV 引擎下載中（約 10MB）..."); loadCv(0); waitCv(); };
+img.onload = () => {
+  $('loading').style.display = 'none';
+  $('main-ui').style.display = 'flex';
+  setupImage(img);
+  loadCv(0);
+  waitCv();
+};
 img.onerror = () => loadingMsg("❌ 圖片解析失敗，請確認圖片格式。");
 img.src = imgUri;
 
 function loadCv(i) {
-  if (i >= CV_URLS.length) return;
+  if (i >= CV_URLS.length) {
+    cvLoadFailed = true;
+    setStatus("⚠️ OpenCV 無法載入；可手動調整角點並繼續下一步。", "#ff9800");
+    return;
+  }
   const s = document.createElement('script');
   s.async = true; s.src = CV_URLS[i];
-  s.onerror = () => { s.remove(); loadCv(i + 1); };
+  s.onerror = () => {
+    s.remove();
+    if (i + 1 < CV_URLS.length) loadCv(i + 1);
+    else {
+      cvLoadFailed = true;
+      setStatus("⚠️ OpenCV 無法載入；可手動調整角點並繼續下一步。", "#ff9800");
+    }
+  };
   document.head.appendChild(s);
 }
 
 let polls = 0;
 function waitCv() {
+  if (cvLoadFailed) return;
   if (typeof cv !== 'undefined') {
     if (cv.Mat) return onReady();
     // 部分 OpenCV.js 版本的 cv 是 Promise
@@ -173,15 +192,28 @@ function waitCv() {
       cv.then((m) => { window.cv = m; onReady(); });
     }
   }
-  if (++polls > 300) { loadingMsg("❌ OpenCV 載入逾時，請檢查網路或改用其他來源。"); return; }
+  if (++polls > 300) {
+    setStatus("⚠️ OpenCV 載入逾時；可手動調整角點並繼續下一步。", "#ff9800");
+    return;
+  }
   setTimeout(waitCv, 200);
 }
 
 function onReady() {
   if (started) return; started = true;
-  $('loading').style.display = 'none';
-  $('main-ui').style.display = 'flex';
-  setupImage(img);
+  try {
+    const sctx = srcCanvas.getContext('2d');
+    imgMat = cv.matFromImageData(sctx.getImageData(0, 0, srcCanvas.width, srcCanvas.height));
+    if (currentStep === 0 && !manualAdjusted) {
+      setStatus("✅ OpenCV 已載入，正在自動偵測卡片…", "#b388ff");
+      setTimeout(runFocusDetect, 100);
+    } else if (currentStep === 0) {
+      setStatus("✅ OpenCV 已載入，保留手動調整的角點。", "#00e676");
+    }
+  } catch (e) {
+    console.error(e);
+    setStatus("⚠️ OpenCV 初始化失敗；仍可手動調整角點並繼續。", "#ff9800");
+  }
 }
 
 /* ---------- 影像初始化 ---------- */
@@ -192,13 +224,15 @@ function setupImage(im) {
   srcCanvas.width = w; srcCanvas.height = h;
   const sctx = srcCanvas.getContext('2d');
   sctx.drawImage(im, 0, 0, w, h);
-  imgMat = cv.matFromImageData(sctx.getImageData(0, 0, w, h));
+  imgMat = (typeof cv !== 'undefined' && cv.Mat && cv.matFromImageData)
+    ? cv.matFromImageData(sctx.getImageData(0, 0, w, h)) : null;
 
   corners = [{x:w*.2,y:h*.2,label:'TL'},{x:w*.8,y:h*.2,label:'TR'},{x:w*.8,y:h*.8,label:'BR'},{x:w*.2,y:h*.8,label:'BL'}];
   showBase();
   currentStep = 0;
   updateUI(); renderOverlay();
-  setTimeout(runFocusDetect, 100);
+  if (imgMat) setTimeout(runFocusDetect, 100);
+  else setStatus("✅ 圖片已載入；拖曳紅點框住卡片後，按 Next 繼續。", "#00e676");
 }
 
 function showBase() {
@@ -208,7 +242,10 @@ function showBase() {
 
 /* ---------- Step 1：偵測卡片外緣 ---------- */
 function runFocusDetect() {
-  if (!imgMat) return;
+  if (!imgMat) {
+    setStatus("⚠️ 自動偵測尚不可用；請手動調整四個紅點。", "#ff9800");
+    return;
+  }
   setStatus("🔍 Scanning...", "#b388ff");
   let srcROI, gray, blurred, edges, contours, hierarchy, kernel, bestCnt = null;
   try {
@@ -262,9 +299,63 @@ function runFocusDetect() {
   }
 }
 
+/* ---------- OpenCV 無法載入時的 Canvas 透視校正 ---------- */
+function solveLinearSystem(a, b) {
+  const n = b.length;
+  for (let col = 0; col < n; col++) {
+    let pivot = col;
+    for (let row = col + 1; row < n; row++)
+      if (Math.abs(a[row][col]) > Math.abs(a[pivot][col])) pivot = row;
+    if (Math.abs(a[pivot][col]) < 1e-12) return null;
+    [a[col], a[pivot]] = [a[pivot], a[col]];
+    [b[col], b[pivot]] = [b[pivot], b[col]];
+    const scale = a[col][col];
+    for (let j = col; j < n; j++) a[col][j] /= scale;
+    b[col] /= scale;
+    for (let row = 0; row < n; row++) {
+      if (row === col) continue;
+      const factor = a[row][col];
+      for (let j = col; j < n; j++) a[row][j] -= factor * a[col][j];
+      b[row] -= factor * b[col];
+    }
+  }
+  return b;
+}
+
+function drawPerspectiveFallback(source, quad, dstW, dstH, mx, my) {
+  const dstPts = [[mx, my], [dstW - mx, my], [dstW - mx, dstH - my], [mx, dstH - my]];
+  const a = [], b = [];
+  for (let i = 0; i < 4; i++) {
+    const x = dstPts[i][0], y = dstPts[i][1], u = quad[i].x, v = quad[i].y;
+    a.push([x, y, 1, 0, 0, 0, -u * x, -u * y]); b.push(u);
+    a.push([0, 0, 0, x, y, 1, -v * x, -v * y]); b.push(v);
+  }
+  const h = solveLinearSystem(a, b);
+  if (!h) throw new Error("無法計算透視轉換");
+
+  const srcCtx = source.getContext('2d');
+  const src = srcCtx.getImageData(0, 0, source.width, source.height);
+  canvas.width = dstW; canvas.height = dstH;
+  const ctx = canvas.getContext('2d');
+  const out = ctx.createImageData(dstW, dstH);
+  for (let y = 0; y < dstH; y++) {
+    for (let x = 0; x < dstW; x++) {
+      const denom = h[6] * x + h[7] * y + 1;
+      if (Math.abs(denom) < 1e-12) continue;
+      const sx = Math.round((h[0] * x + h[1] * y + h[2]) / denom);
+      const sy = Math.round((h[3] * x + h[4] * y + h[5]) / denom);
+      if (sx < 0 || sy < 0 || sx >= source.width || sy >= source.height) continue;
+      const si = (sy * source.width + sx) * 4, di = (y * dstW + x) * 4;
+      out.data[di] = src.data[si]; out.data[di + 1] = src.data[si + 1];
+      out.data[di + 2] = src.data[si + 2]; out.data[di + 3] = src.data[si + 3];
+    }
+  }
+  ctx.putImageData(out, 0, 0);
+}
+
 /* ---------- 透視校正 ---------- */
 function processWarp() {
-  if (!imgMat) return;
+  if (!srcCanvas) return;
   let srcPts, dstPts, M;
   try {
     const d = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
@@ -275,15 +366,19 @@ function processWarp() {
     const mx = cardW * PADDING_RATIO, my = cardH * PADDING_RATIO;
     const dstW = Math.round(cardW + 2 * mx), dstH = Math.round(cardH + 2 * my);
 
-    srcPts = cv.matFromArray(4, 1, cv.CV_32FC2, corners.flatMap(c => [c.x, c.y]));
-    dstPts = cv.matFromArray(4, 1, cv.CV_32FC2, [mx, my, dstW - mx, my, dstW - mx, dstH - my, mx, dstH - my]);
-    M = cv.getPerspectiveTransform(srcPts, dstPts);
-
-    if (warpedMat) warpedMat.delete();
-    warpedMat = new cv.Mat();
-    cv.warpPerspective(imgMat, warpedMat, M, new cv.Size(dstW, dstH), cv.INTER_LINEAR,
-                       cv.BORDER_CONSTANT, new cv.Scalar(0, 0, 0, 255));
-    cv.imshow('cvCanvas', warpedMat);
+    if (imgMat && typeof cv !== 'undefined') {
+      srcPts = cv.matFromArray(4, 1, cv.CV_32FC2, corners.flatMap(c => [c.x, c.y]));
+      dstPts = cv.matFromArray(4, 1, cv.CV_32FC2, [mx, my, dstW - mx, my, dstW - mx, dstH - my, mx, dstH - my]);
+      M = cv.getPerspectiveTransform(srcPts, dstPts);
+      if (warpedMat) warpedMat.delete();
+      warpedMat = new cv.Mat();
+      cv.warpPerspective(imgMat, warpedMat, M, new cv.Size(dstW, dstH), cv.INTER_LINEAR,
+                         cv.BORDER_CONSTANT, new cv.Scalar(0, 0, 0, 255));
+      cv.imshow('cvCanvas', warpedMat);
+    } else {
+      if (warpedMat) { warpedMat.delete(); warpedMat = null; }
+      drawPerspectiveFallback(srcCanvas, corners, dstW, dstH, mx, my);
+    }
 
     currentStep = 1;
     guides.outL = mx / dstW; guides.outR = (dstW - mx) / dstW;
@@ -303,7 +398,10 @@ function processWarp() {
 
 /* ---------- Step 2：自動對齊內框 ---------- */
 function runAutoDetectInner() {
-  if (!warpedMat) return;
+  if (!warpedMat || typeof cv === 'undefined') {
+    setStatus("⚠️ 自動內框對齊需要 OpenCV；請手動拖曳青色虛線。", "#ff9800");
+    return;
+  }
   setStatus("⚡ Aligning Inner Frame...", "#00e5ff");
   let gray, edges;
   try {
@@ -382,6 +480,7 @@ function drawPoly() {
 function bindDrag(el, onMove) {
   el.addEventListener('pointerdown', (e) => {
     e.preventDefault(); e.stopPropagation();
+    manualAdjusted = true;
     el.setPointerCapture(e.pointerId);
     const move = (ev) => {
       const r = canvas.getBoundingClientRect();
