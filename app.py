@@ -59,7 +59,7 @@ def navigate_to(page_name):
     st.session_state["current_page"] = page_name
 
 
-# ---------------------------------------------------------------- 置中檢測 HTML
+# ---------------------------------------------------------------- 置中檢測 HTML (TAG 背面 52/48 Pristine 校準版)
 CENTERING_HTML = r"""<!DOCTYPE html>
 <html>
 <head>
@@ -79,6 +79,8 @@ CENTERING_HTML = r"""<!DOCTYPE html>
   .btn-purple { background:linear-gradient(135deg,#7c4dff,#b388ff); color:#fff; border:1px solid #999; }
   .btn-cyan { background:linear-gradient(135deg,#00e5ff,#00b8d4); color:#000; }
   .btn-gray { background:#424242; color:#fff; }
+  .btn-side { background:#2e7d32; color:#fff; border:1px solid #66bb6a; }
+  .btn-side.back-mode { background:#1565c0; border:1px solid #42a5f5; }
 
   #workspace { position:relative; margin:15px auto; box-shadow:0 0 30px rgba(0,0,0,.5);
                font-size:0; touch-action:none; max-width:98vw; border:1px solid #333; overflow:hidden;
@@ -99,12 +101,14 @@ CENTERING_HTML = r"""<!DOCTYPE html>
   .outer-style.line-h { height:1px; background:#ff5252; } .outer-style.line-v { width:1px; background:#ff5252; }
   .inner-style.line-h { height:0; border-top:1px dashed #00e5ff; } .inner-style.line-v { width:0; border-left:1px dashed #00e5ff; }
 
-  #result-panel { display:none; width:90%; max-width:500px; background:#1a1a1a; border-radius:12px;
-                  padding:15px; margin:20px 0; grid-template-columns:1fr 1fr; gap:15px; }
-  .score-card { background:#252525; padding:10px; border-radius:8px; text-align:center; border:1px solid #333; }
+  #result-panel { display:none; width:92%; max-width:540px; background:#1a1a1a; border-radius:12px;
+                  padding:15px; margin:20px 0; grid-template-columns:1fr 1fr; gap:12px; }
+  .score-card { background:#252525; padding:12px; border-radius:8px; text-align:center; border:1px solid #333; }
+  .score-card.full-width { grid-column: 1 / -1; background:#1e242b; border-color:#37474f; }
   .score-val { font-size:20px; font-weight:bold; color:#fff; font-family:monospace; margin:5px 0; }
-  .badge { display:inline-block; padding:4px 8px; border-radius:4px; font-size:12px; font-weight:bold; color:#000; }
-  #status-msg { color:#888; margin:10px; font-size:14px; min-height:20px; }
+  .badge { display:inline-block; padding:4px 10px; border-radius:4px; font-size:12px; font-weight:bold; color:#000; margin:2px; }
+  .grade-summary { font-size:13px; color:#cfd8dc; margin-top:6px; line-height:1.5; }
+  #status-msg { color:#888; margin:10px; font-size:14px; min-height:20px; text-align:center; }
   #loading { color:#00bcd4; margin-top:50px; font-weight:bold; line-height:1.6; text-align:center; }
 </style>
 </head>
@@ -113,6 +117,7 @@ CENTERING_HTML = r"""<!DOCTYPE html>
 
 <div id="main-ui" style="display:none; width:100%; flex-direction:column; align-items:center;">
   <div class="controls">
+    <button id="sideToggleBtn" class="btn btn-side" onclick="toggleSide()">🃏 目前：正面 (Front)</button>
     <button id="autoBtnStep1" class="btn btn-purple" onclick="runFocusDetect()">✨ Auto Detect</button>
     <button id="nextBtn" class="btn btn-blue" onclick="processWarp()">Next</button>
     <button id="autoBtnStep2" class="btn btn-cyan" onclick="runAutoDetectInner()">⚡ Align Inner</button>
@@ -121,10 +126,15 @@ CENTERING_HTML = r"""<!DOCTYPE html>
   <div id="status-msg">Ready</div>
   <div id="workspace"><canvas id="cvCanvas"></canvas><div id="overlay"></div></div>
   <div id="result-panel">
-    <div class="score-card"><div style="color:#aaa;font-size:12px">Left / Right</div>
+    <div class="score-card"><div style="color:#aaa;font-size:12px">Left / Right (左右)</div>
       <div id="val-lr" class="score-val">--</div><div id="bdg-lr" class="badge">--</div></div>
-    <div class="score-card"><div style="color:#aaa;font-size:12px">Top / Bottom</div>
+    <div class="score-card"><div style="color:#aaa;font-size:12px">Top / Bottom (上下)</div>
       <div id="val-tb" class="score-val">--</div><div id="bdg-tb" class="badge">--</div></div>
+    <div class="score-card full-width">
+      <div style="color:#90caf9;font-size:12px;font-weight:bold;">🏆 綜合鑑定標準評估 (以最弱軸判定)</div>
+      <div id="val-worst" class="score-val" style="font-size:18px;">Worst Axis: --</div>
+      <div id="grade-badges" class="grade-summary">--</div>
+    </div>
   </div>
 </div>
 
@@ -132,7 +142,6 @@ CENTERING_HTML = r"""<!DOCTYPE html>
 const imgUri = "___IMG_URI___";
 const MAX = ___MAX___;
 const PADDING_RATIO = 0.05;
-// 依序嘗試的 OpenCV.js 來源（前一個失敗會自動換下一個）
 const CV_URLS = [
   "https://docs.opencv.org/4.8.0/opencv.js",
   "https://cdnjs.cloudflare.com/ajax/libs/opencv.js/4.8.0/opencv.min.js"
@@ -144,11 +153,25 @@ const clamp = (v) => Math.max(0, Math.min(1, v));
 
 let imgMat = null, warpedMat = null, srcCanvas = null, currentStep = 0, started = false;
 let cvLoadFailed = false, manualAdjusted = false;
+let isFront = true; // true = 正面 (Front), false = 背面 (Back)
 let corners = [];
 let guides = { outL:0, outR:1, outT:0, outB:1, inL:.1, inR:.9, inT:.1, inB:.9 };
 
 function setStatus(msg, color) { const s = $('status-msg'); s.innerText = msg; s.style.color = color || '#888'; }
 function loadingMsg(html) { $('loading').innerHTML = html; }
+
+function toggleSide() {
+  isFront = !isFront;
+  const btn = $('sideToggleBtn');
+  if (isFront) {
+    btn.innerText = "🃏 目前：正面 (Front)";
+    btn.classList.remove("back-mode");
+  } else {
+    btn.innerText = "🔄 目前：背面 (Back)";
+    btn.classList.add("back-mode");
+  }
+  if (currentStep === 1) calc();
+}
 
 /* ---------- 載入流程：先顯示圖片，再載入 OpenCV ---------- */
 const img = new Image();
@@ -186,7 +209,6 @@ function waitCv() {
   if (cvLoadFailed) return;
   if (typeof cv !== 'undefined') {
     if (cv.Mat) return onReady();
-    // 部分 OpenCV.js 版本的 cv 是 Promise
     if (typeof cv.then === 'function' && !cv.__waiting) {
       cv.__waiting = true;
       cv.then((m) => { window.cv = m; onReady(); });
@@ -268,7 +290,7 @@ function runFocusDetect() {
       const cnt = contours.get(i);
       const area = cv.contourArea(cnt);
       if (area > maxArea && area > minArea) {
-        if (bestCnt) bestCnt.delete();   // 修正：舊的最佳輪廓要釋放，避免記憶體洩漏
+        if (bestCnt) bestCnt.delete();
         maxArea = area; bestCnt = cnt;
       } else { cnt.delete(); }
     }
@@ -383,7 +405,6 @@ function processWarp() {
     currentStep = 1;
     guides.outL = mx / dstW; guides.outR = (dstW - mx) / dstW;
     guides.outT = my / dstH; guides.outB = (dstH - my) / dstH;
-    // 修正：內框預設位置以「卡片尺寸」為基準，而非整張影像
     const cw = guides.outR - guides.outL, ch = guides.outB - guides.outT;
     guides.inT = guides.outT + 0.088 * ch; guides.inB = guides.outT + 0.915 * ch;
     guides.inL = guides.outL + 0.08 * cw;  guides.inR = guides.outR - 0.08 * cw;
@@ -408,7 +429,7 @@ function runAutoDetectInner() {
     gray = new cv.Mat(); edges = new cv.Mat();
     cv.cvtColor(warpedMat, gray, cv.COLOR_RGBA2GRAY, 0);
     cv.Canny(gray, edges, 50, 150);
-    const W = warpedMat.cols, H = warpedMat.rows, E = edges.data;   // 直接讀 data，比 ucharPtr 快很多
+    const W = warpedMat.cols, H = warpedMat.rows, E = edges.data;
 
     function strongest(isV, a, b) {
       const o0 = isV ? guides.outL * W : guides.outT * H;
@@ -422,7 +443,7 @@ function runAutoDetectInner() {
         for (let j = j0; j < j1; j++) if (E[isV ? j * W + i : i * W + j] > 200) score++;
         if (score > max) { max = score; best = i; }
       }
-      return max > (j1 - j0) * 0.05 ? best : null;   // 至少要有 5% 長度是邊緣才採用
+      return max > (j1 - j0) * 0.05 ? best : null;
     }
 
     const l = strongest(true, .06, .10);  if (l !== null) guides.inL = l / W;
@@ -436,7 +457,7 @@ function runAutoDetectInner() {
   finally { [gray, edges].forEach(m => { if (m) m.delete(); }); }
 }
 
-/* ---------- Overlay（全部用百分比定位，視窗縮放不會跑掉） ---------- */
+/* ---------- Overlay ---------- */
 function renderOverlay() {
   overlay.innerHTML = '';
   if (currentStep === 0) {
@@ -466,7 +487,7 @@ function renderOverlay() {
 function drawPoly() {
   if (!srcCanvas || currentStep !== 0) return;
   const ctx = canvas.getContext('2d');
-  ctx.drawImage(srcCanvas, 0, 0);          // 修正：用離屏 canvas 重繪，不再每次拖曳都呼叫 cv.imshow
+  ctx.drawImage(srcCanvas, 0, 0);
   const r = canvas.getBoundingClientRect();
   const s = r.width ? canvas.width / r.width : 1;
   ctx.beginPath(); ctx.lineWidth = 2 * s; ctx.strokeStyle = '#ff5252';
@@ -475,8 +496,6 @@ function drawPoly() {
   ctx.closePath(); ctx.stroke();
 }
 
-// 修正：改用 Pointer Events + setPointerCapture，滑鼠移出 iframe 也不會卡住拖曳；
-// 座標以 canvas 為基準（原本用 workspace，含 1px 邊框會有偏移）
 function bindDrag(el, onMove) {
   el.addEventListener('pointerdown', (e) => {
     e.preventDefault(); e.stopPropagation();
@@ -501,27 +520,73 @@ function bindDrag(el, onMove) {
   });
 }
 
-/* ---------- 計分（參考用門檻，非官方標準） ---------- */
+/* ---------- 計分（TAG 背面 Pristine <= 52/48 嚴格校準版） ---------- */
 function calc() {
   const l = guides.inL - guides.outL, r = guides.outR - guides.inR;
   const t = guides.inT - guides.outT, b = guides.outB - guides.inB;
   const sW = (l + r) || 0.001, sH = (t + b) || 0.001;
-  setScore('lr', (l / sW) * 100, (r / sW) * 100);
-  setScore('tb', (t / sH) * 100, (b / sH) * 100);
+
+  const lr1 = (l / sW) * 100, lr2 = (r / sW) * 100;
+  const tb1 = (t / sH) * 100, tb2 = (b / sH) * 100;
+
+  const wLR = setScore('lr', lr1, lr2);
+  const wTB = setScore('tb', tb1, tb2);
+
+  updateOverallEvaluation(wLR, wTB);
 }
 
 function setScore(id, v1, v2) {
   const val = $('val-' + id), bdg = $('bdg-' + id);
-  if (v1 < 0 || v2 < 0) { val.innerText = '--'; bdg.innerText = '線位置無效'; bdg.style.background = '#555'; bdg.style.color = '#fff'; return; }
+  if (v1 < 0 || v2 < 0) {
+    val.innerText = '--'; bdg.innerText = '線位置無效'; bdg.style.background = '#555'; bdg.style.color = '#fff';
+    return null;
+  }
   val.innerText = `${v1.toFixed(2)} / ${v2.toFixed(2)}`;
   const w = Math.max(v1, v2);
   const set = (txt, bg, fg) => { bdg.innerText = txt; bdg.style.background = bg; bdg.style.color = fg; };
-  if (w <= 50.00) set("BGS 10 黑標", "#d4af37", "#000");
-  else if (w < 51.00) set("TAG 10 Pristine", "#2e7d32", "#fff");
-  else if (w <= 53.00) set("TAG 10 Gem Mint", "#1565c0", "#fff");
-  else if (w <= 55.00) set("PSA 10 Gem Mint", "#0288d1", "#fff");
-  else if (w <= 60.00) set("PSA 10 (寬容極限)", "#ff9800", "#000");
-  else set("未達 Gem Mint", "#d32f2f", "#fff");
+
+  if (isFront) {
+    if (w <= 50.00) set("BGS 10 黑標", "#d4af37", "#000");
+    else if (w < 51.00) set("TAG / CGC Pristine", "#2e7d32", "#fff");
+    else if (w <= 52.00) set("BGS 9.5 門檻", "#00897b", "#fff");
+    else if (w <= 55.00) set("PSA 10 / TAG 10", "#1565c0", "#fff");
+    else set("超出 55/45", "#d32f2f", "#fff");
+  } else {
+    if (w <= 52.00) set("TAG Pristine (<=52/48)", "#2e7d32", "#fff");
+    else if (w <= 55.00) set("BGS 黑標 / CGC Pristine", "#00897b", "#fff");
+    else if (w <= 60.00) set("BGS 9.5 門檻", "#0288d1", "#fff");
+    else if (w <= 75.00) set("PSA 10 / CGC 10", "#1565c0", "#fff");
+    else set("超出 75/25", "#d32f2f", "#fff");
+  }
+  return w;
+}
+
+function updateOverallEvaluation(wLR, wTB) {
+  const worstEl = $('val-worst'), badgesEl = $('grade-badges');
+  if (wLR === null || wTB === null) {
+    worstEl.innerText = "Worst Axis: --";
+    badgesEl.innerHTML = "請調整紅線與青線至有效範圍內";
+    return;
+  }
+  const worst = Math.max(wLR, wTB);
+  const minor = (100 - worst).toFixed(2);
+  worstEl.innerText = `最弱軸: ${worst.toFixed(2)} / ${minor} (${isFront ? '正面' : '背面'})`;
+
+  let tags = [];
+  if (isFront) {
+    if (worst <= 50.00) tags.push(`<span class="badge" style="background:#d4af37;color:#000;">🏆 BGS 10 Black Label</span>`);
+    if (worst < 51.00) tags.push(`<span class="badge" style="background:#2e7d32;color:#fff;">✨ TAG 10 Pristine / CGC Pristine</span>`);
+    if (worst <= 52.00) tags.push(`<span class="badge" style="background:#00897b;color:#fff;">💎 BGS 9.5 Gem Mint</span>`);
+    if (worst <= 55.00) tags.push(`<span class="badge" style="background:#1565c0;color:#fff;">✅ PSA 10 / CGC 10 / TAG 10</span>`);
+    if (tags.length === 0) tags.push(`<span class="badge" style="background:#d32f2f;color:#fff;">❌ 未達 Gem Mint 正面標準 (>55/45)</span>`);
+  } else {
+    if (worst <= 52.00) tags.push(`<span class="badge" style="background:#2e7d32;color:#fff;">✨ TAG Pristine 門檻 (<=52/48)</span>`);
+    if (worst <= 55.00) tags.push(`<span class="badge" style="background:#00897b;color:#fff;">🏆 BGS 黑標 / CGC Pristine</span>`);
+    if (worst <= 60.00) tags.push(`<span class="badge" style="background:#0288d1;color:#fff;">💎 BGS 9.5 Gem Mint</span>`);
+    if (worst <= 75.00) tags.push(`<span class="badge" style="background:#1565c0;color:#fff;">✅ PSA 10 / CGC Gem Mint 10</span>`);
+    if (tags.length === 0) tags.push(`<span class="badge" style="background:#d32f2f;color:#fff;">❌ 未達 Gem Mint 背面標準 (>75/25)</span>`);
+  }
+  badgesEl.innerHTML = tags.join(" ");
 }
 
 /* ---------- UI ---------- */
@@ -532,13 +597,13 @@ function updateUI() {
   $('autoBtnStep2').style.display = s0 ? 'none' : 'inline-block';
   $('resetBtn').style.display = s0 ? 'none' : 'inline-block';
   $('result-panel').style.display = s0 ? 'none' : 'grid';
-  if (!s0) setStatus("Step 2：紅線＝外緣，青色虛線＝內框", "#aaa");
+  if (!s0) setStatus("Step 2：紅線＝物理外緣，青色虛線＝TAG 測量錨點 (UI框/圖騰交界)", "#aaa");
 }
 
 function resetAll() {
   currentStep = 0;
   showBase(); updateUI(); renderOverlay();
-  setStatus("Ready");        // 修正：Reset 後狀態文字不再停留在 Step 2
+  setStatus("Ready");
 }
 
 window.addEventListener('resize', () => { if (currentStep === 0) drawPoly(); });
@@ -665,7 +730,6 @@ elif page == "投資分析":
                 hovertemplate="預測價格: NT$%{y:,.0f}<extra></extra>",
             ))
             fig_pred.update_layout(
-                # 修正：原本同時傳 xaxis_title 與 xaxis=dict(...)，合併成同一個 dict
                 xaxis=dict(title="未來天數", tickmode="array",
                            tickvals=[0, 5, 10, 15, 30, 45, 60],
                            ticktext=["現在", "5天", "10天", "15天", "30天", "45天", "60天"]),
@@ -675,7 +739,6 @@ elif page == "投資分析":
             st.plotly_chart(fig_pred, use_container_width=True)
 
             st.markdown("### ⏱️ 最佳操作時機判定")
-            # 修正：排除第 0 天(就是現在)，否則可能出現「第 0 天賣出/買進」
             future = {d: p for d, p in preds.items() if d > 0}
             if future:
                 best_sell_day = max(future, key=future.get)
@@ -746,21 +809,20 @@ elif page == "PSA 查詢":
 
 # ---------------------------------------------------------------- 6. 置中檢測
 elif page == "置中檢測":
-    st.title("📏 卡牌置中檢測 (v6.4)")
+    st.title("📏 卡牌置中檢測 (v6.4 - TAG 校準版)")
     st.markdown("""
     請上傳卡牌正/背面影像，系統分兩階段判定：
     1. **自動外緣偵測：** 框出卡片物理邊界，並加入 Buffer 避免裁切過度。
     2. **內外框雙對齊：**
        - `紅色實線`：對齊「物理最外緣」。
-       - `青色虛線`：對齊「內框 (連續性 UI 裝飾外框或圖騰交界)」。
+       - `青色虛線`：對齊「TAG 測量錨點」（無邊框卡對齊**連續性 UI 裝飾框架最外圍**；卡背對齊**實心外框與內部網格圖騰交界**）。
 
-    ⚠️ 判定標籤為自訂的參考門檻，並非各鑑定公司的官方標準。
+    ⚠️ 判定標籤為基於 TAG/PSA/BGS/CGC 公開門檻之參考基準，實際評級仍受表面、邊角與邊緣卡況影響。
     """)
 
     uploaded_files = st.file_uploader("上傳卡牌圖片 (可多張)", type=["jpg", "jpeg", "png"],
                                       accept_multiple_files=True)
     if uploaded_files:
-        # 修正：一次只載入一個檢測器，避免每張圖都各載一份 opencv.js (約 10MB)
         idx = st.selectbox("選擇要檢測的影像", range(len(uploaded_files)),
                            format_func=lambda i: uploaded_files[i].name)
         f = uploaded_files[idx]
